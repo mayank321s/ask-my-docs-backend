@@ -1,0 +1,20 @@
+# Core Dependencies
+fastapi>=0.111.0
+tortoise-orm>=0.21.3
+pydantic>=2.7.4
+asyncpg>=0.29.0
+loguru>=0.7.2
+betterconf>=2.8.0
+
+# Required by FastAPI
+starlette>=0.36.3
+pydantic-settings>=2.0.0
+
+# Development Dependencies
+pytest>=5.3.0
+pytest-asyncio>=0.10.0
+pytest-cov>=2.8.0
+black>=18.3a0
+pre-commit>=1.20.0
+mkdocs>=1.0.0
+mkdocs-material>=4.5.0

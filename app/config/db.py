@@ -13,10 +13,10 @@ class PostgresSettings(Config):
     """Postgres env values"""
 
     postgres_user: str = field("POSTGRES_USER", default="postgres")
-    postgres_password: str = field("POSTGRES_PASSWORD", default="postgres")
-    postgres_db: str = field("POSTGRES_DB", default="mydb")
+    postgres_password: str = field("POSTGRES_PASSWORD", default="root")
+    postgres_db: str = field("POSTGRES_DB", default="ask-my-docs")
     postgres_port: str = field("POSTGRES_PORT", default="5432")
-    postgres_host: str = field("POSTGRES_HOST", default="postgres")
+    postgres_host: str = field("POSTGRES_HOST", default="localhost")
 
 
 class TortoiseSettings:
