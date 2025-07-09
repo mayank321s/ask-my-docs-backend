@@ -1,20 +1,17 @@
 """Service layer for Project operations (API v1)."""
 
-from typing import List
-from loguru import logger
-
-from app.core.models.tortoise import Project
-
+from app.core.repository.project_repository import ProjectRepository
+from app.core.models.pydantic.projects import ProjectCreate, ProjectRead
+from fastapi import HTTPException
 
 class ProjectService:
     """Provides CRUD operations for Projects for API v1."""
 
     @staticmethod
-    async def create(name: str) -> Project:
-        logger.info("[v1] Creating project: {}", name)
-        return await Project.create(name=name)
+    async def create(dto: ProjectCreate):
+        existing = await ProjectRepository.list_all()
+        if any(p.name.lower() == dto.name.lower() for p in existing):
+            raise HTTPException(status_code=409, detail="Project with this name already exists")
 
-    @staticmethod
-    async def list_all() -> List[Project]:
-        logger.info("[v1] Fetching all projects")
-        return await Project.all().order_by("id")
+        project = await ProjectRepository.create(dto.name)
+        return ProjectRead.model_validate(project)

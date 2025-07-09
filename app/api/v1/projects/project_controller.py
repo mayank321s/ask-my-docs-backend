@@ -16,11 +16,7 @@ router = APIRouter(prefix="/projects", tags=["projects"])
     description="Create a new project",
 )
 async def create_project(dto: ProjectCreate):
-    existing = await ProjectService.list_all()
-    if any(p.name.lower() == dto.name.lower() for p in existing):
-        raise HTTPException(status_code=409, detail="Project with this name already exists")
-
-    project = await ProjectService.create(dto.name)
+    project = await ProjectService.create(dto)
     return ProjectRead.model_validate(project)
 
 
