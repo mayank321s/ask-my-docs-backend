@@ -2,8 +2,17 @@
 Tortoise models.
 """
 
-from tortoise import Model, fields
+from .projects import Project
+from .vector_indexes import VectorIndex
+from .vector_namespaces import VectorNamespace
+from .documents import Document, DocumentType
+from .vector_chunks import VectorChunk
 
-class Item(Model):
-    id = fields.IntField(pk=True)
-    name = fields.TextField()
+__all__ = [
+    "Project",
+    "VectorIndex",
+    "VectorNamespace",
+    "Document",
+    "DocumentType",
+    "VectorChunk",
+]

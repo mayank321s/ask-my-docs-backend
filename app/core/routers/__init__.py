@@ -1,4 +1,4 @@
-from app.core.routers.items import router as items_router
+from app.api.v1.projects.project_controller import router as projects_router
 from app.utils.api.router import TypedAPIRouter
 
-items_router = TypedAPIRouter(router=items_router, prefix="/items", tags=["item"])
+projects_router = TypedAPIRouter(router=projects_router, prefix="", tags=["projects"])
