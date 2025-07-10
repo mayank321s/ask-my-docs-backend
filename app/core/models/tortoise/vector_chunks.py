@@ -10,13 +10,13 @@ class VectorChunk(Model):
     document: fields.ForeignKeyRelation[Document] = fields.ForeignKeyField(
         "models.Document", related_name="chunks", on_delete=fields.CASCADE
     )
-    chunk_id = fields.CharField(max_length=255, unique=True)
+    chunkId = fields.CharField(max_length=255, unique=True)
     metadata = fields.JSONField(null=True)
-    created_at = fields.DatetimeField(auto_now_add=True)
-    updated_at = fields.DatetimeField(auto_now=True)
+    createdAt = fields.DatetimeField(auto_now_add=True, source_field="created_at")
+    updatedAt = fields.DatetimeField(auto_now=True, source_field="updated_at")
 
     class Meta:
         table = "vector_chunks"
 
     def __str__(self):  # pragma: no cover
-        return self.chunk_id
+        return self.chunkId

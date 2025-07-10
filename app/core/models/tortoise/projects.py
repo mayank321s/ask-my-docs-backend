@@ -6,8 +6,8 @@ class Project(Model):
 
     id = fields.IntField(pk=True)
     name = fields.CharField(max_length=255, unique=True)
-    created_at = fields.DatetimeField(auto_now_add=True)
-    updated_at = fields.DatetimeField(auto_now=True)
+    createdAt = fields.DatetimeField(auto_now_add=True, source_field="created_at")
+    updatedAt = fields.DatetimeField(auto_now=True, source_field="updated_at")
 
     class Meta:
         table = "projects"

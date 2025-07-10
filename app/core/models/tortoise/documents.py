@@ -32,16 +32,22 @@ class Document(Model):
 
 
 
-    project: fields.ForeignKeyRelation[Project] = fields.ForeignKeyField(
-        "models.Project", related_name="documents", on_delete=fields.CASCADE
+    project = fields.ForeignKeyField(
+        "models.Project",
+        related_name="documents",
+        source_field="project_id",
+        on_delete=fields.CASCADE
     )
-    namespace: fields.ForeignKeyRelation[VectorNamespace] = fields.ForeignKeyField(
-        "models.VectorNamespace", related_name="documents", on_delete=fields.CASCADE
+    namespace = fields.ForeignKeyField(
+        "models.VectorNamespace",
+        related_name="documents",
+        source_field="namespace_id",
+        on_delete=fields.CASCADE
     )
     file_path = fields.TextField(null=True)
     team = fields.JSONField(null=True)
-    created_at = fields.DatetimeField(auto_now_add=True)
-    updated_at = fields.DatetimeField(auto_now=True)
+    createdAt = fields.DatetimeField(auto_now_add=True, source_field="created_at")
+    updatedAt = fields.DatetimeField(auto_now=True, source_field="updated_at")
 
     class Meta:
         table = "documents"
