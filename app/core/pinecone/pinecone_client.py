@@ -1,6 +1,8 @@
 from pinecone import Pinecone
 
-pinecone = Pinecone(api_key="")
+from os import getenv
+
+pinecone = Pinecone(api_key=getenv("PINECONE_API_KEY"))
 
 
 def upsertChunks(index, namespace, chunks):
@@ -18,9 +20,14 @@ def searchChunks(index, namespace, query, filters=None):
         filter=filters
     )
 
-def listNamespaces(index):
-    stats = pinecone.Index(index).describe_index_stats()
-    return list(stats['namespaces'].keys())
+def listNamespaces(index_name: str) -> list[str]:
+    try:
+        index = pinecone.Index(index_name)
+        stats = index.describe_index_stats()
+        return list(stats.get('namespaces', {}).keys())
+    except Exception as e:
+        print(f"Error listing namespaces for index {index_name}: {str(e)}")
+        raise
 
 def createIndex(index_name: str):
     pinecone.create_index_for_model(
@@ -36,3 +43,31 @@ def createIndex(index_name: str):
 def deleteIndex(index_name: str):
     if pinecone.has_index(index_name):
         pinecone.delete_index(index_name)
+
+def listNamespaceRecords(index_name: str, namespace: str, limit: int = 1000) -> list[dict]:
+    try:
+        index = pinecone.Index(index_name)
+        
+        query_response = index.query(
+            namespace=namespace,
+            top_k=limit,
+            include_values=True,
+            include_metadata=True,
+            vector=[0] * 1024
+        )
+        
+        results = []
+        for match in query_response.get('matches', []):
+            result = {
+                'id': match.id,
+                'score': match.score,
+                'values': match.values,
+                'metadata': match.metadata or {}
+            }
+            results.append(result)
+            
+        return results
+        
+    except Exception as e:
+        print(f"Error listing data in namespace {namespace} of index {index_name}: {str(e)}")
+        raise
