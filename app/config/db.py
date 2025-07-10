@@ -3,7 +3,9 @@ from betterconf import Config, field
 from betterconf.config import as_dict
 
 from app.config.cfg import IS_TEST
-
+from dotenv import load_dotenv
+load_dotenv(".env")
+ 
 DB_MODELS = ["app.core.models.tortoise"]
 POSTGRES_DB_URL = "postgres://{postgres_user}:{postgres_password}@{postgres_host}:{postgres_port}/{postgres_db}"
 SQLITE_DB_URL = "sqlite://:memory:"
@@ -12,11 +14,11 @@ SQLITE_DB_URL = "sqlite://:memory:"
 class PostgresSettings(Config):
     """Postgres env values"""
 
-    postgres_user: str = field("POSTGRES_USER", default="postgres")
-    postgres_password: str = field("POSTGRES_PASSWORD", default="root")
-    postgres_db: str = field("POSTGRES_DB", default="ask-my-docs")
-    postgres_port: str = field("POSTGRES_PORT", default="5432")
-    postgres_host: str = field("POSTGRES_HOST", default="localhost")
+    postgres_user: str = field("POSTGRES_USER")
+    postgres_password: str = field("POSTGRES_PASSWORD")
+    postgres_db: str = field("POSTGRES_DB")
+    postgres_port: str = field("POSTGRES_PORT")
+    postgres_host: str = field("POSTGRES_HOST")
 
 
 class TortoiseSettings:
