@@ -29,9 +29,9 @@ def listNamespaces(index_name: str) -> list[str]:
         print(f"Error listing namespaces for index {index_name}: {str(e)}")
         raise
 
-def createIndex(index_name: str):
+def createIndex(indexName: str):
     pinecone.create_index_for_model(
-        name=index_name,
+        name=indexName,
         cloud="aws",
         region="us-east-1",
         embed={
@@ -39,10 +39,6 @@ def createIndex(index_name: str):
             "field_map":{"text": "chunk_text"}
         }
     )
-
-def deleteIndex(index_name: str):
-    if pinecone.has_index(index_name):
-        pinecone.delete_index(index_name)
 
 def listNamespaceRecords(index_name: str, namespace: str, limit: int = 1000) -> list[dict]:
     try:
@@ -71,3 +67,28 @@ def listNamespaceRecords(index_name: str, namespace: str, limit: int = 1000) -> 
     except Exception as e:
         print(f"Error listing data in namespace {namespace} of index {index_name}: {str(e)}")
         raise
+
+def deleteIndex(indexName: str):
+    if pinecone.has_index(indexName):
+        pinecone.delete_index(indexName)
+        
+def createNamespace(indexName: str, namespace: str, projectName: str):
+    """
+    Creates a namespace in the given index by inserting a placeholder record.
+    This is required because Pinecone does not support explicit namespace creation.
+    """
+    index = pinecone.Index(indexName)
+
+    existing_namespaces = index.describe_index_stats()["namespaces"]
+    if namespace in existing_namespaces:
+        print(f"Namespace '{namespace}' already exists in index '{indexName}'.")
+        return
+
+    dummy_vector = [{
+        "_id": namespace,
+        "chunk_text": f"This is a Category namespace for {projectName}.",
+        "meta": {"created_for": projectName}
+    }]
+    
+    index.upsert_records(namespace, dummy_vector)
+    print(f"Namespace '{namespace}' created in index '{indexName}' for project '{projectName}'.")

@@ -3,7 +3,8 @@ from typing import List
 
 from fastapi import APIRouter, HTTPException, status
 
-from app.core.models.pydantic.projects import CreateProjectRequestDto, ListProjectDto, CreateProjectResponseDto
+from app.core.models.pydantic.projects import CreateProjectRequestDto, ListProjectDto
+from app.core.models.pydantic.category import CreateCategoryRequestDto
 from .project_service import ProjectService
 
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -14,7 +15,7 @@ router = APIRouter(prefix="/projects", tags=["projects"])
     status_code=status.HTTP_201_CREATED,
     description="Create a new project",
 )
-async def create_project(request: CreateProjectRequestDto):
+async def createProject(request: CreateProjectRequestDto):
     project = await ProjectService.create(request)
     return project
 
@@ -24,6 +25,16 @@ async def create_project(request: CreateProjectRequestDto):
     response_model=List[ListProjectDto],
     description="Get all projects",
 )
-async def list_projects():
+async def listProjects():
     projects = await ProjectService.list_all()
     return [ListProjectDto.model_validate(p) for p in projects]
+
+
+@router.post(
+    "/{projectId}/category",
+    status_code=status.HTTP_201_CREATED,
+    description="Create a new category",
+)
+async def createProjectCategory(projectId: int, request: CreateCategoryRequestDto):
+    category = await ProjectService.handleCreateProjectCategory(projectId, request)
+    return category
