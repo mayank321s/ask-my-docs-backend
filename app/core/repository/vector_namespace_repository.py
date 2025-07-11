@@ -7,9 +7,9 @@ from app.core.models.tortoise import VectorNamespace
 class VectorNamespaceRepository:
 
     @staticmethod
-    async def create(name: str) -> VectorNamespace:
-        logger.info("[v1] Creating project: {}", name)
-        return await VectorNamespace.create(name=name)
+    async def create(VectorNamespaceData: Dict[str, Any]) -> VectorNamespace:
+        logger.info("[v1] Creating project: {}", VectorNamespaceData)
+        return await VectorNamespace.create(**VectorNamespaceData)
 
     @staticmethod
     async def list_all() -> List[VectorNamespace]:

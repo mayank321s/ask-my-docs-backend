@@ -1,5 +1,6 @@
 """Service layer for Project operations (API v1)."""
 
+from argparse import Namespace
 from app.core.repository.project_repository import ProjectRepository
 from app.core.repository.vector_index_repository import VectorIndexRepository
 from app.core.models.pydantic.projects import CreateProjectRequestDto
@@ -43,15 +44,12 @@ class ProjectService:
             if not projectDetail:
                 raise HTTPException(status_code=404, detail="Project not found")
             
-            projectIn
+            projectIndexDetails = await VectorIndexRepository.findOneByClause({"projectId": projectId})
 
             async with in_transaction():
-                createNamespace(projectDetail.name, request.name, projectDetail.name)
-                categoryDetail = await VectorNamespaceRepository.create(request.name)
-                categoryIndexName = convertStringToHyphen(request.name)
-                
-                createIndex(categoryIndexName)
-                await VectorIndexRepository.create({"indexName": categoryIndexName, "projectId": projectId})
+                namespace = convertStringToHyphen(request.name)
+                createNamespace(projectDetail.name, namespace, projectDetail.name)
+                await VectorNamespaceRepository.create({"name": namespace, "categoryName":  request.name, "indexId": projectIndexDetails.id})
 
             return True
         except Exception as e:
