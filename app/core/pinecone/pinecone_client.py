@@ -2,12 +2,13 @@ from pinecone import Pinecone
 
 from os import getenv
 
-pinecone = Pinecone(api_key=getenv("PINECONE_API_KEY"))
+pinecone = Pinecone(api_key="pcsk_5reQKK_NsVxjifLzB5xjYsrPkB3EfNdRwhAJCKcZzUU82FWoPa1VZXGPqPdVRgz9XvJgbN")
 
 
 def upsertChunks(index, namespace, chunks):
     index = pinecone.Index(index)
     index.upsert_records(namespace, chunks)
+    return True
 
 def searchChunks(index, namespace, query, filters=None):
     index = pinecone.Index(index)
@@ -87,7 +88,7 @@ def createNamespace(indexName: str, namespace: str, projectName: str):
     dummy_vector = [{
         "_id": namespace,
         "chunk_text": f"This is a Category namespace for {projectName}.",
-        "meta": {"created_for": projectName}
+        "created_for": projectName
     }]
     
     index.upsert_records(namespace, dummy_vector)

@@ -1,12 +1,12 @@
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from uuid import uuid4
 
-def chunkText(text, metadata):
+def chunkText(text, metadata, file_name):
     splitter = RecursiveCharacterTextSplitter(chunk_size=300, chunk_overlap=30)
     chunks = splitter.split_text(text)
     return [
         {
-            "_id": f"{metadata['file_name']}_{i}_{uuid4().hex[:6]}",
+            "_id": f"{file_name}_{i}_{uuid4().hex[:6]}",
             "chunk_text": chunk,
             **metadata
         }

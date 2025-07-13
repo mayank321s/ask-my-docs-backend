@@ -20,8 +20,10 @@ class ListProjectDto(BaseModel):
 
     id: int
     name: str
-    created_at: datetime
-    updated_at: datetime
+    indexName: str
+    createdAt: datetime
+    updatedAt: datetime
 
     class Config:
         orm_mode = True
+

@@ -1,10 +1,10 @@
 """API v1 controller for Projects."""
 from typing import List
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, status
 
 from app.core.models.pydantic.projects import CreateProjectRequestDto, ListProjectDto
-from app.core.models.pydantic.category import CreateCategoryRequestDto
+from app.core.models.pydantic.category import CreateCategoryRequestDto, ListCategoryDto
 from .project_service import ProjectService
 
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -26,8 +26,7 @@ async def createProject(request: CreateProjectRequestDto):
     description="Get all projects",
 )
 async def listProjects():
-    projects = await ProjectService.list_all()
-    return [ListProjectDto.model_validate(p) for p in projects]
+    return await ProjectService.handleListAllProjects()
 
 
 @router.post(
@@ -38,3 +37,11 @@ async def listProjects():
 async def createProjectCategory(projectId: int, request: CreateCategoryRequestDto):
     category = await ProjectService.handleCreateProjectCategory(projectId, request)
     return category
+
+@router.get(
+    "/{projectId}/category",
+    response_model=List[ListCategoryDto],
+    description="Get all project categories",
+)
+async def listProjectCategories(projectId: int):
+    return await ProjectService.handleListProjectCategoriesByProjectId(projectId)
