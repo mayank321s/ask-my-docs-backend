@@ -12,14 +12,17 @@ def upsertChunks(index, namespace, chunks):
 
 def searchChunks(index, namespace, query, filters=None):
     index = pinecone.Index(index)
-    return index.search(
-        namespace=namespace,
-        query={
+    searchParams = {
+        "namespace": namespace,
+        "query": {
             "top_k": 5,
             "inputs": {"text": query}
-        },
-        filter=filters
-    )
+        }
+    }
+    if filters is not None:
+        searchParams["filter"] = filters
+
+    return index.search(**searchParams)
 
 def listNamespaces(index_name: str) -> list[str]:
     try:

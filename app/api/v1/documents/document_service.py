@@ -12,6 +12,7 @@ from app.utils.common import extract_text_from_pdf
 from app.core.repository.vector_chunks_repository import VectorChunkRepository
 from fastapi import UploadFile
 import json
+from app.core.models.pydantic.document import ListDocumentDto
 class DocumentService:
     @staticmethod
     async def create(file: UploadFile, projectId: int, categoryId: int, metadata: str):
@@ -44,5 +45,24 @@ class DocumentService:
                     })
 
             return True
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+        
+    @staticmethod
+    async def handleListAllDocumentsByCategoryId(categoryId: int):
+        try:
+            documentsDetails = await DocumentRepository.findAllByClause({"namespaceId": categoryId})
+            result: list[ListDocumentDto] = []
+            for document in documentsDetails:
+
+                result.append(
+                    ListDocumentDto(
+                        id=document.id,
+                        name=document.name,
+                        createdAt=document.createdAt,
+                        updatedAt=document.updatedAt,
+                    )
+                )
+            return result
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
