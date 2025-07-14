@@ -8,14 +8,17 @@ from tortoise.transactions import in_transaction
 from app.core.pinecone.pinecone_client import upsertChunks
 from app.core.repository.document_repository import DocumentRepository
 from app.core.chunker.chunker import chunkText
-from app.utils.common import extract_text_from_pdf
+from app.utils.common import (
+    extractTextFromPdf,
+    extractTextFromDocx,
+)
 from app.core.repository.vector_chunks_repository import VectorChunkRepository
 from fastapi import UploadFile
 import json
 from app.core.models.pydantic.document import ListDocumentDto
 class DocumentService:
     @staticmethod
-    async def create(file: UploadFile, projectId: int, categoryId: int, metadata: str):
+    async def handleUploadDocument(file: UploadFile, projectId: int, categoryId: int, metadata: str):
         try:
             projectDetail = await ProjectRepository.get_by_id(projectId)
             if not projectDetail:
@@ -23,10 +26,14 @@ class DocumentService:
             projectIndexDetails = await VectorIndexRepository.findOneByClause({"projectId": projectId})
             vectorNamespaceDetails = await VectorNamespaceRepository.findOneByClause({"id": categoryId})
             metadata = json.loads(metadata)
-            if file.filename.endswith(".pdf"):
-                text = extract_text_from_pdf(file)
+            filename_lower = file.filename.lower()
+            if filename_lower.endswith(".pdf"):
+                text = extractTextFromPdf(file)
+            elif filename_lower.endswith(".docx"):
+                text = extractTextFromDocx(file)
             else:
-                text = file.file.read().decode()
+                # treat as plain text
+                text = file.file.read().decode(errors="ignore")
             chunks = chunkText(text, metadata, file.filename)
             async with in_transaction():
                 upsertChunks(projectIndexDetails.indexName, vectorNamespaceDetails.name, chunks)

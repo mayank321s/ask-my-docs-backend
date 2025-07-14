@@ -7,12 +7,12 @@ from app.core.models.pydantic.document import ListDocumentDto
 router = APIRouter(prefix="/documents", tags=["documents"])
 
 @router.post(
-    "/",
+    "/upload",
     status_code=status.HTTP_201_CREATED,
-    description="Create a new document",
+    description="Upload a document to vector DB",
 )
-async def createDocument(projectId: int = Form(...), file: UploadFile = Form(...), categoryId: int = Form(...), metadata: str = Form(...)):
-    document = await DocumentService.create(file, projectId, categoryId, metadata)
+async def uploadDocument(projectId: int = Form(...), file: UploadFile = Form(...), categoryId: int = Form(...), metadata: str = Form(...)):
+    document = await DocumentService.handleUploadDocument(file, projectId, categoryId, metadata)
     return document
 
 @router.get(
