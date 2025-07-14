@@ -15,7 +15,7 @@ def searchChunks(index, namespace, query, filters=None):
     searchParams = {
         "namespace": namespace,
         "query": {
-            "top_k": 5,
+            "top_k": 7,
             "inputs": {"text": query}
         }
     }

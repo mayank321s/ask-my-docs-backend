@@ -16,9 +16,13 @@ Pass a different `model` arg to override."""
     )
 
     prompt = (
-        "Use the following context to answer the question as accurately as possible.\n\n"
-        f"{context}\n\nQuestion: {question}"
-    )   
+        "You are a helpful and knowledgeable assistant.\n"
+        "You have access to internal documents and data to help you answer questions.\n"
+        "Based on the context below, answer the user's question clearly and conversationally, as if you're explaining from your own expertise.\n"
+        f"Context:\n{context}\n\n"
+        f"Question: {question}\n"
+)
+  
     payload = {
         "model": model, 
         "prompt": prompt,
