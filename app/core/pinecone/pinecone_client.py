@@ -2,7 +2,7 @@ from pinecone import Pinecone
 
 from os import getenv
 
-pinecone = Pinecone(api_key="pcsk_5reQKK_NsVxjifLzB5xjYsrPkB3EfNdRwhAJCKcZzUU82FWoPa1VZXGPqPdVRgz9XvJgbN")
+pinecone = Pinecone(api_key=getenv("PINECONE_API_KEY"))
 
 
 def upsertChunks(index, namespace, chunks):
