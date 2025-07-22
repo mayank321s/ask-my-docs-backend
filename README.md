@@ -67,5 +67,3 @@ The server will be available at `http://127.0.0.1:8000`
 4. Push to the branch (`git push origin feature/AmazingFeature`)
 5. Open a Pull Request
 
-## License
-[Add your license information here]
