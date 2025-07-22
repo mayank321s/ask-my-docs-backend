@@ -20,7 +20,7 @@ A FastAPI-based backend service for document processing and vector database inte
 
 1. Clone the repository
 ```bash
-git clone <your-repo-url>
+git clone https://github.com/mayank-paktolus/ask-my-docs-backend.git
 cd ask-my-docs-backend
 ```
 
