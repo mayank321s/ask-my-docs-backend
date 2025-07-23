@@ -5,7 +5,7 @@ from ..github.github_service import GitHubService
 
 router = APIRouter(prefix="/github", tags=["github"])
 
-@router.post("/download")
+@router.get("/download")
 async def downloadGithubRepository(
     owner: str = Query(..., description="Repository owner/organization name"),
     repo: str = Query(..., description="Repository name"),
