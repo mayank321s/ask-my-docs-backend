@@ -26,7 +26,6 @@ class ChatService:
                     namespace=namespaceDetails.name,
                     query=request.query
                 )
-                print(results)
                 all_hits.extend(results['result']['hits'])
             else:
                 namespaces = await VectorNamespaceRepository.findAllByClause({"indexId": projectIndexDetails.id})
@@ -36,7 +35,6 @@ class ChatService:
                         namespace=ns.name,
                         query=request.query
                     )
-                    print(results)
                     all_hits.extend(results['result']['hits'])
 
             answer = askOllamaLlm(request.query, all_hits)
