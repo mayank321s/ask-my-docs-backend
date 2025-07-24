@@ -26,6 +26,7 @@ class ChatService:
                     namespace=namespaceDetails.name,
                     query=request.query
                 )
+                print(results)
                 all_hits.extend(results['result']['hits'])
             else:
                 namespaces = await VectorNamespaceRepository.findAllByClause({"indexId": projectIndexDetails.id})
@@ -35,10 +36,11 @@ class ChatService:
                         namespace=ns.name,
                         query=request.query
                     )
+                    print(results)
                     all_hits.extend(results['result']['hits'])
 
-            answer = askOllamaLlm(request.query, all_hits)
-            return {"answer": answer}
+            # answer = askOllamaLlm(request.query, all_hits)
+            return {"answer": ""}
 
         except Exception as e:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))

@@ -1,11 +1,14 @@
 import os
 import zipfile
 import requests
-from typing import Optional, Tuple
+from typing import Optional
+import shutil
 from fastapi import HTTPException
 from urllib.parse import urljoin
 from app.core.pinecone.pinecone_client import processCodebaseFolder
-
+from app.core.repository.project_repository import ProjectRepository
+from app.core.repository.vector_index_repository import VectorIndexRepository
+from app.core.repository.vector_namespace_repository import VectorNamespaceRepository
 
 class GitHubService:
     GITHUB_API_BASE = "https://api.github.com"
@@ -21,8 +24,16 @@ class GitHubService:
         return headers
 
     @staticmethod
-    def downloadRepository(owner: str, repo: str, ref: Optional[str] = None) -> Tuple[str, str]:
+    async def downloadRepository(owner: str, repo: str, projectId: int, categoryId: int,branchName: str, ref: Optional[str] = None) -> bool:
         try:
+            projectDetail = await ProjectRepository.get_by_id(projectId)
+            if not projectDetail:
+                raise HTTPException(status_code=404, detail="Project not found")
+            projectIndexDetails = await VectorIndexRepository.findOneByClause({"projectId": projectId})
+            vectorNamespaceDetails = await VectorNamespaceRepository.findOneByClause({"id": categoryId})
+            if not vectorNamespaceDetails:
+                raise HTTPException(status_code=404, detail="Category not found")
+
             if not os.path.exists(GitHubService.ASSETS_DIR):
                 os.makedirs(GitHubService.ASSETS_DIR)
 
@@ -35,8 +46,7 @@ class GitHubService:
                     headers=GitHubService.getHeaders()
                 )
                 response.raise_for_status()
-                defaultBranch = response.json().get("default_branch", "main")
-                url = f"repos/{owner}/{repo}/zipball/{defaultBranch}"
+                url = f"repos/{owner}/{repo}/zipball/{branchName}"
 
             downloadUrl = urljoin(GitHubService.GITHUB_API_BASE, url)
 
@@ -52,7 +62,6 @@ class GitHubService:
 
             with zipfile.ZipFile(zip_path, 'r') as zip_ref:
                 if os.path.isdir(extract_dir):
-                    import shutil
                     shutil.rmtree(extract_dir)
 
                 zip_ref.extractall(extract_dir)
@@ -64,8 +73,18 @@ class GitHubService:
                 else:
                     extractedTopDir = extract_dir
 
-                processCodebaseFolder(extractedTopDir,"nsc","technical-document")
-                return zip_path, extractedTopDir
+
+                processCodebaseFolder(extractedTopDir,projectIndexDetails.indexName,vectorNamespaceDetails.name, branchName)
+            try:
+                os.remove(zip_path)
+            except OSError as e:
+                print(f"Warning: Could not delete ZIP file {zip_path}: {e}")
+            
+            try:
+                shutil.rmtree(extract_dir)
+            except OSError as e:
+                print(f"Warning: Could not delete extract directory {extract_dir}: {e}")
+            return True
 
         except requests.exceptions.RequestException as e:
             raise HTTPException(
