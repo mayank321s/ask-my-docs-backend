@@ -1,6 +1,8 @@
 from pinecone import Pinecone
+from app.core.chunker.chunker import chunkText
 
 from os import getenv
+import os
 
 pinecone = Pinecone(api_key=getenv("PINECONE_API_KEY"))
 
@@ -96,3 +98,40 @@ def createNamespace(indexName: str, namespace: str, projectName: str):
     
     index.upsert_records(namespace, dummy_vector)
     print(f"Namespace '{namespace}' created in index '{indexName}' for project '{projectName}'.")
+
+
+def processCodebaseFolder(root_folder: str, pinecone_index, namespace: str, branchName: str):
+    try:
+        for dirpath, _, filenames in os.walk(root_folder):
+            for filename in filenames:
+                abs_filepath = os.path.join(dirpath, filename)
+                rel_filepath = os.path.relpath(abs_filepath, root_folder).replace("\\", "/")
+
+                # Try to read the file
+                try:
+                    with open(abs_filepath, "r", encoding="utf-8") as f:
+                        file_text = f.read()
+                except Exception as e:
+                    print(f"Skipping {abs_filepath}: {e}")
+                    continue
+
+                # Prepare metadata
+                metadata = {
+                    "file_name": filename,
+                    "relative_path": rel_filepath,
+                    "branch_name": branchName
+                }
+
+                # Chunk the file
+                chunks = chunkText(file_text, metadata, file_name=filename)
+                if not chunks:       # nothing to upload
+                    print(f"Skipping {rel_filepath}: no chunks")
+                    continue
+
+                # Upsert chunks
+                upsertChunks(pinecone_index, namespace, chunks)
+                print(f"Upserted {len(chunks)} chunks from {rel_filepath}")
+
+    except Exception as e:
+        print(f"Error processing codebase folder: {e}")
+        raise
