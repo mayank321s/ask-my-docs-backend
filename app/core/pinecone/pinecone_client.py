@@ -7,10 +7,38 @@ import os
 pinecone = Pinecone(api_key=getenv("PINECONE_API_KEY"))
 
 
-def upsertChunks(index, namespace, chunks):
-    index = pinecone.Index(index)
-    index.upsert_records(namespace, chunks)
+def upsertChunks(index_name, namespace, chunks, batch_size=50):
+    """
+    Upsert chunks to Pinecone in batches to avoid exceeding batch size limits
+    """
+    if not chunks:
+        return True
+    
+    index = pinecone.Index(index_name)
+    
+    # If chunks fit in a single batch, upload directly
+    if len(chunks) <= batch_size:
+        index.upsert_records(namespace, chunks)
+        print(f"Upserted {len(chunks)} chunks in single batch")
+        return True
+    
+    # Process large batches in smaller chunks
+    total_batches = (len(chunks) + batch_size - 1) // batch_size
+    
+    for i in range(0, len(chunks), batch_size):
+        batch = chunks[i:i + batch_size]
+        batch_number = i // batch_size + 1
+        
+        try:
+            index.upsert_records(namespace, batch)
+            print(f"Upserted batch {batch_number}/{total_batches}: {len(batch)} chunks")
+        except Exception as e:
+            print(f"Error upserting batch {batch_number}: {e}")
+            raise
+    
+    print(f"Successfully upserted all {len(chunks)} chunks in {total_batches} batches")
     return True
+
 
 def searchChunks(index, namespace, query, filters=None):
     index = pinecone.Index(index)

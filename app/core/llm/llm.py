@@ -1,6 +1,7 @@
 import os
 import requests
 from typing import List, Dict
+import json
 
 # URL of the locally running Ollama server (default port 11434)
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
@@ -11,17 +12,32 @@ def askOllamaLlm(question: str, context_chunks: List[Dict], model: str = "llama3
 Pass a different `model` arg to override."""
 
     # Build a single prompt that contains all context chunks
-    context = "\n\n".join(
-        chunk["fields"].get("chunk_text", "") for chunk in context_chunks
-    )
+    context_parts = []
+    for chunk in context_chunks:
+        fields = chunk.get("fields", {})
+        chunk_text = fields.get("chunk_text", "")
+
+        metadata = {k: v for k, v in fields.items() if k != "chunk_text"}
+
+        if metadata:
+            meta_json = json.dumps(metadata, indent=2, default=str)
+            metadata_str = f"\n[Metadata]\n{meta_json}\n"
+        else:
+            metadata_str = ""
+
+        context_part = f"{chunk_text}{metadata_str}"
+        context_parts.append(context_part)
+
+    context = "\n\n".join(context_parts)
 
     prompt = (
         "You are a helpful and knowledgeable assistant.\n"
         "You have access to internal documents and data to help you answer questions.\n"
         "Based on the context below, answer the user's question clearly and conversationally, as if you're explaining from your own expertise.\n"
+        "Also the date given which ever data is the latest that is updated information and the previous date is old information"
         f"Context:\n{context}\n\n"
         f"Question: {question}\n"
-)
+    )
   
     payload = {
         "model": model, 
