@@ -54,6 +54,62 @@ Pass a different `model` arg to override."""
     except requests.RequestException as exc:
         # Surface network or API issues up the stack
         raise RuntimeError(f"Failed to query Ollama: {exc}") from exc
+
+def askOllamaLlmV2(question: str, context_chunks: List[Dict], model: str = "llama3.1") -> str:
+    """Send the question plus context to an Ollama-hosted model (default: Llama-3 7B).
+    Pass a different `model` arg to override."""
+
+    # Build a single prompt that contains all context chunks
+    context_parts = []
+    for chunk in context_chunks:
+        # Get metadata from Pinecone's QueryResponse structure
+        metadata = chunk.get("metadata", {})
+        chunk_text = metadata.get("chunk_text", "")
+        
+        # Extract other metadata (excluding chunk_text)
+        other_metadata = {k: v for k, v in metadata.items() if k != "chunk_text"}
+        
+        # Include match score and ID for better context
+        if "score" in chunk:
+            other_metadata["relevance_score"] = chunk["score"]
+        if "id" in chunk:
+            other_metadata["chunk_id"] = chunk["id"]
+
+        if other_metadata:
+            meta_json = json.dumps(other_metadata, indent=2, default=str)
+            metadata_str = f"\n[Metadata]\n{meta_json}\n"
+        else:
+            metadata_str = ""
+
+        context_part = f"{chunk_text}{metadata_str}"
+        context_parts.append(context_part)
+
+    context = "\n\n".join(context_parts)
+
+    prompt = (
+        "You are a helpful and knowledgeable assistant.\n"
+        "You have access to internal documents and data to help you answer questions.\n"
+        "Based on the context below, answer the user's question clearly and conversationally, as if you're explaining from your own expertise.\n"
+        "The data with the latest date represents updated information, while previous dates contain older information.\n"
+        f"Context:\n{context}\n\n"
+        f"Question: {question}\n"
+    )
+  
+    payload = {
+        "model": model, 
+        "prompt": prompt,
+        "stream": False,
+    }
+
+    try:
+        response = requests.post(f"{OLLAMA_URL}/api/generate", json=payload, timeout=300)
+        response.raise_for_status()
+        data = response.json()
+        return data.get("response", "")
+    except requests.RequestException as exc:
+        raise RuntimeError(f"Failed to query Ollama: {exc}") from exc
+
+
     
 AZURE_API_KEY = os.getenv("AZURE_API_KEY")
 AZURE_MODEL_URL = "https://1lmhubpoc8598770946.services.ai.azure.com/models"  # Cleaned endpoint

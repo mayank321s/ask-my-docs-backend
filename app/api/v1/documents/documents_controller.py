@@ -15,6 +15,17 @@ async def uploadDocument(projectId: int = Form(...), file: UploadFile = Form(...
     document = await DocumentService.handleUploadDocument(file, projectId, categoryId, metadata)
     return document
 
+@router.post(
+    "/ollama-upload",
+    status_code=status.HTTP_201_CREATED,
+    description="Upload a document to vector DB",
+)
+async def uploadDocumentOllama(projectId: int = Form(...), file: UploadFile = Form(...), categoryId: int = Form(...), metadata: str = Form(...)):
+    document = await DocumentService.handleUploadDocumentByollama(file, projectId, categoryId, metadata)
+    return document
+
+
+
 @router.get(
     "/{categoryId}",
     response_model=List[ListDocumentDto],

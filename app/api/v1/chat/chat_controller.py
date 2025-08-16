@@ -12,3 +12,12 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 )
 async def searchAndAnswer(request: SearchAndAnswerRequestDto):
     return await ChatService.handleSearchAndAnswer(request)
+
+
+@router.post(
+    "/ollama",
+    status_code=status.HTTP_201_CREATED,
+    description="Search and answer",
+)
+async def searchAndAnswerOllama(request: SearchAndAnswerRequestDto):
+    return await ChatService.handleSearchAndAnswerOllama(request)

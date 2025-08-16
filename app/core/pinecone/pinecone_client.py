@@ -1,8 +1,9 @@
-from pinecone import Pinecone
+from pinecone import Pinecone, ServerlessSpec
 from app.core.chunker.chunker import chunkText
 
 from os import getenv
 import os
+import ollama
 
 pinecone = Pinecone(api_key=getenv("PINECONE_API_KEY"))
 
@@ -40,6 +41,60 @@ def upsertChunks(index_name, namespace, chunks, batch_size=50):
     return True
 
 
+def upsertChunksOllama(index_name, namespace, chunks, batch_size=50):
+    """
+    Upsert chunks to Pinecone with locally generated embeddings
+    """
+    if not chunks:
+        return True
+    
+    index = pinecone.Index(index_name)
+    
+    # Generate embeddings for all chunks
+    print("Generating embeddings locally...")
+    embedded_chunks = []
+    
+    for chunk in chunks:
+        # Generate embedding using local Ollama
+        response = ollama.embed(
+            model='nomic-embed-text',
+            input=chunk['chunk_text']
+        )
+        
+        # Prepare vector for Pinecone
+        embedded_chunk = {
+            'id': chunk['_id'],
+            'values': response['embeddings'][0],
+            'metadata': {
+                'chunk_text': chunk['chunk_text'],
+                **{k: v for k, v in chunk.items() if k not in ['_id', 'chunk_text']}
+            }
+        }
+        embedded_chunks.append(embedded_chunk)
+    
+    # Upload in batches (same logic as before)
+    if len(embedded_chunks) <= batch_size:
+        index.upsert(vectors=embedded_chunks, namespace=namespace)
+        print(f"Upserted {len(embedded_chunks)} chunks in single batch")
+        return True
+    
+    total_batches = (len(embedded_chunks) + batch_size - 1) // batch_size
+    
+    for i in range(0, len(embedded_chunks), batch_size):
+        batch = embedded_chunks[i:i + batch_size]
+        batch_number = i // batch_size + 1
+        
+        try:
+            index.upsert(vectors=batch, namespace=namespace)
+            print(f"Upserted batch {batch_number}/{total_batches}: {len(batch)} chunks")
+        except Exception as e:
+            print(f"Error upserting batch {batch_number}: {e}")
+            raise
+    
+    print(f"Successfully upserted all {len(embedded_chunks)} chunks in {total_batches} batches")
+    return True
+
+
 def searchChunks(index, namespace, query, filters=None):
     index = pinecone.Index(index)
     searchParams = {
@@ -72,6 +127,17 @@ def createIndex(indexName: str):
             "model":"llama-text-embed-v2",
             "field_map":{"text": "chunk_text"}
         }
+    )
+
+def createIndexWithLocalEmbeddings(indexName: str):
+    pinecone.create_index(
+        name=indexName,
+        dimension=768,
+        metric='cosine',
+        spec=ServerlessSpec(
+            cloud="aws",
+            region="us-east-1"
+        )
     )
 
 def listNamespaceRecords(index_name: str, namespace: str, limit: int = 1000) -> list[dict]:
@@ -127,6 +193,33 @@ def createNamespace(indexName: str, namespace: str, projectName: str):
     index.upsert_records(namespace, dummy_vector)
     print(f"Namespace '{namespace}' created in index '{indexName}' for project '{projectName}'.")
 
+def createNamespacOllama(indexName: str, namespace: str, projectName: str, dim: int = 768):
+    """
+    For client-side embeddings indexes: create a namespace implicitly by upserting
+    a minimal vector. Namespaces are auto-created on first upsert.
+    """
+    index = pinecone.Index(indexName)
+
+    stats = index.describe_index_stats()
+    if namespace in stats.get("namespaces", {}):
+        print(f"Namespace '{namespace}' already exists in index '{indexName}'.")
+        return
+
+    emb = ollama.embed(model="nomic-embed-text", input=f"Category namespace for {projectName}.")["embeddings"][0]
+
+    index.upsert(
+        vectors=[{
+            "id": f"__ns__{namespace}",
+            "values": emb,
+            "metadata": {
+                "kind": "namespace-placeholder",
+                "project": projectName,
+            }
+        }],
+        namespace=namespace
+    )
+    print(f"Namespace '{namespace}' created in index '{indexName}' for project '{projectName}'.")
+
 
 def processCodebaseFolder(root_folder: str, pinecone_index, namespace: str, branchName: str):
     try:
@@ -162,4 +255,39 @@ def processCodebaseFolder(root_folder: str, pinecone_index, namespace: str, bran
 
     except Exception as e:
         print(f"Error processing codebase folder: {e}")
+        raise
+
+def searchChunksOllama(index: str, namespace: str, query: str, filters=None):
+    try:
+        # Generate query embedding using local Ollama
+        print(f"Generating embedding for query: {query}")
+        response = ollama.embed(
+            model='nomic-embed-text',
+            input=query
+        )
+        query_embedding = response['embeddings'][0]
+        
+        pineconeIndex = pinecone.Index(index)
+        
+        # Prepare search parameters
+        search_params = {
+            "vector": query_embedding,
+            "top_k": 7,
+            "include_metadata": True,
+            "include_values": False,
+            "namespace": namespace
+        }
+        
+        # Add filters if provided
+        if filters is not None:
+            search_params["filter"] = filters
+        
+        # Perform the search
+        results = pineconeIndex.query(**search_params)
+        
+        print(f"Found {len(results.get('matches', []))} matches")
+        return results
+        
+    except Exception as e:
+        print(f"Error searching chunks in namespace {namespace}: {str(e)}")
         raise

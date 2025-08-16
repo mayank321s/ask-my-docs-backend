@@ -256,9 +256,9 @@ class GitHubService:
                 params = {
                     "state": "closed",
                     "sort": "updated",
-                    "direction": "desc",
+                    "direction": "asc",
                     "page": page,
-                    "per_page": per_page
+                    "per_page": per_page 
                 }
                 
                 response = requests.get(

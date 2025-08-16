@@ -5,7 +5,7 @@ from app.core.repository.vector_index_repository import VectorIndexRepository
 from app.core.repository.vector_namespace_repository import VectorNamespaceRepository
 from fastapi import HTTPException
 from tortoise.transactions import in_transaction
-from app.core.pinecone.pinecone_client import upsertChunks
+from app.core.pinecone.pinecone_client import (upsertChunks, upsertChunksOllama)
 from app.core.repository.document_repository import DocumentRepository
 from app.core.chunker.chunker import chunkText
 from app.utils.common import (
@@ -16,6 +16,7 @@ from app.core.repository.vector_chunks_repository import VectorChunkRepository
 from fastapi import UploadFile
 import json
 from app.core.models.pydantic.document import ListDocumentDto
+from datetime import datetime
 class DocumentService:
     @staticmethod
     async def handleUploadDocument(file: UploadFile, projectId: int, categoryId: int, metadata: str):
@@ -50,10 +51,60 @@ class DocumentService:
                         "chunkId": chunk["_id"],
                         "metadata": metadata
                     })
+ 
+            return True
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @staticmethod
+    async def handleUploadDocumentByollama(file: UploadFile, projectId: int, categoryId: int, metadata: str):
+        try:
+            projectDetail = await ProjectRepository.get_by_id(projectId)
+            if not projectDetail:
+                raise HTTPException(status_code=404, detail="Project not found")
+            
+            projectIndexDetails = await VectorIndexRepository.findOneByClause({"projectId": projectId})
+            vectorNamespaceDetails = await VectorNamespaceRepository.findOneByClause({"id": categoryId})
+            metadata = json.loads(metadata)
+            fileMetadata = {
+                **metadata,
+                "file_name": file.filename,
+                "uploaded_at": datetime.now().isoformat()
+            }
+            
+            filename_lower = file.filename.lower()
+            if filename_lower.endswith(".pdf"):
+                text = extractTextFromPdf(file)
+            elif filename_lower.endswith(".docx"):
+                text = extractTextFromDocx(file)
+            else:
+                text = file.file.read().decode(errors="ignore")
+            
+            # Use your existing chunk function
+            chunks = chunkText(text, fileMetadata, file.filename)
+            
+            async with in_transaction():
+                # Use the updated upsert function with local embeddings
+                upsertChunksOllama(projectIndexDetails.indexName, vectorNamespaceDetails.name, chunks)
+                
+                # Create document entry
+                documentDetail = await DocumentRepository.create({
+                    "name": file.filename,
+                    "namespaceId": vectorNamespaceDetails.id,
+                })
+
+                # Insert each chunk record
+                for chunk in chunks:
+                    await VectorChunkRepository.create({
+                        "documentId": documentDetail.id,
+                        "chunkId": chunk["_id"],
+                        "metadata": metadata
+                    })
 
             return True
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
+
         
     @staticmethod
     async def handleListAllDocumentsByCategoryId(categoryId: int):
