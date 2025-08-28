@@ -4,6 +4,7 @@ import ollama
 import os
 import numpy as np
 from app.core.chunker.chunker import chunkText  # your existing chunker
+import uuid
 
 # Initialize Qdrant client
 qdrant = QdrantClient(url="http://localhost:6333")  # adjust host/port as needed
@@ -53,7 +54,7 @@ def upsert_chunks(collection_name, namespace, chunks, batch_size=50):
     print(f"Successfully upserted all {len(points)} chunks in {total_batches} batches")
     return True
 
-def upsert_chunks_ollama(collection_name, namespace, chunks, batch_size=50):
+def upsertChunksOllama(collection_name, namespace, chunks, batch_size=50):
     """
     Upsert chunks to Qdrant with locally generated embeddings
     """
@@ -134,7 +135,7 @@ def search_chunks(collection_name, namespace, query, filters=None):
     
     return qdrant.search(**search_params)
 
-def search_chunks_ollama(collection_name, namespace, query, filters=None):
+def searchChunksOllama(collection_name, namespace, query, filters=None):
     """
     Search chunks with locally generated query embedding
     """
@@ -146,6 +147,7 @@ def search_chunks_ollama(collection_name, namespace, query, filters=None):
             input=query
         )
         query_embedding = response['embeddings'][0]
+        print(query_embedding)
         
         # Build namespace filter
         namespace_filter = models.Filter(
@@ -202,7 +204,7 @@ def list_namespaces(collection_name: str) -> list[str]:
         print(f"Error listing namespaces for collection {collection_name}: {str(e)}")
         raise
 
-def create_collection(collection_name: str, dimension: int = 768):
+def createCollection(collection_name: str, dimension: int = 768):
     """
     Create Qdrant collection (equivalent to Pinecone index)
     """
@@ -229,7 +231,7 @@ def create_collection_with_local_embeddings(collection_name: str, dimension: int
     """
     Same as create_collection since Qdrant doesn't distinguish between local/remote embeddings at collection level
     """
-    return create_collection(collection_name, dimension)
+    return createCollection(collection_name, dimension)
 
 def list_namespace_records(collection_name: str, namespace: str, limit: int = 1000) -> list[dict]:
     """
@@ -277,7 +279,7 @@ def list_namespace_records(collection_name: str, namespace: str, limit: int = 10
         print(f"Error listing data in namespace {namespace} of collection {collection_name}: {str(e)}")
         raise
 
-def delete_collection(collection_name: str):
+def deleteCollection(collection_name: str):
     """
     Delete Qdrant collection (equivalent to Pinecone delete index)
     """
@@ -292,7 +294,7 @@ def delete_collection(collection_name: str):
         print(f"Error deleting collection {collection_name}: {e}")
         raise
 
-def create_namespace(collection_name: str, namespace: str, project_name: str):
+def createNamespace(collection_name: str, namespace: str, project_name: str):
     """
     Create namespace by inserting a placeholder point (Qdrant uses payload filtering)
     """
@@ -309,8 +311,11 @@ def create_namespace(collection_name: str, namespace: str, project_name: str):
             input=f"This is a Category namespace for {project_name}."
         )
         
+        # Generate a deterministic UUID based on namespace for consistency
+        namespace_uuid = str(uuid.uuid5(uuid.NAMESPACE_DNS, f"namespace_{namespace}_{project_name}"))
+        
         placeholder_point = models.PointStruct(
-            id=f"__ns__{namespace}",
+            id=namespace_uuid,  # Use UUID instead of string
             vector=response['embeddings'][0],
             payload={
                 "kind": "namespace-placeholder",
@@ -328,13 +333,7 @@ def create_namespace(collection_name: str, namespace: str, project_name: str):
         print(f"Error creating namespace {namespace}: {e}")
         raise
 
-def create_namespace_ollama(collection_name: str, namespace: str, project_name: str):
-    """
-    Same as create_namespace since we're already using Ollama for embeddings
-    """
-    return create_namespace(collection_name, namespace, project_name)
-
-def process_codebase_folder(root_folder: str, collection_name: str, namespace: str, branch_name: str):
+def processCodebaseFolder(root_folder: str, collection_name: str, namespace: str, branch_name: str):
     """
     Process codebase folder and upsert to Qdrant
     """
@@ -366,7 +365,7 @@ def process_codebase_folder(root_folder: str, collection_name: str, namespace: s
                     continue
 
                 # Upsert chunks using Ollama embeddings
-                upsert_chunks_ollama(collection_name, namespace, chunks)
+                upsertChunksOllama(collection_name, namespace, chunks)
                 print(f"Upserted {len(chunks)} chunks from {rel_filepath}")
 
     except Exception as e:
