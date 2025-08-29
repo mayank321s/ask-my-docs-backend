@@ -4,7 +4,7 @@ from typing import List, Dict
 import json
 
 # URL of the locally running Ollama server (default port 11434)
-OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
+OLLAMA_URL = os.getenv("OLLAMA_URL", "http://152.67.163.210:11434")
 
 
 def askOllamaLlm(question: str, context_chunks: List[Dict], model: str = "llama3.1") -> str:
