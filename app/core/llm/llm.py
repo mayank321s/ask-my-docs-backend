@@ -2,6 +2,7 @@ import os
 import requests
 from typing import List, Dict
 import json
+from huggingface_hub import InferenceClient
 
 # URL of the locally running Ollama server (default port 11434)
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434")
@@ -108,6 +109,69 @@ def askOllamaLlmV2(question: str, context_chunks: List[Dict], model: str = "llam
         return data.get("response", "")
     except requests.RequestException as exc:
         raise RuntimeError(f"Failed to query Ollama: {exc}") from exc
+
+def askHuggingFaceLLM(question: str, context_chunks: List[Dict], model: str = "Qwen/Qwen2.5-7B-Instruct") -> str:
+    """Send the question plus context to Hugging Face Together provider model (default: Qwen2.5-7B-Instruct).
+    Pass a different `model` arg to override."""
+
+    # Build a single prompt that contains all context chunks
+    context_parts = []
+    for chunk in context_chunks:
+        fields = chunk.get("fields", {})
+        chunk_text = fields.get("chunk_text", "")
+
+        metadata = {k: v for k, v in fields.items() if k != "chunk_text"}
+
+        if metadata:
+            meta_json = json.dumps(metadata, indent=2, default=str)
+            metadata_str = f"\n[Metadata]\n{meta_json}\n"
+        else:
+            metadata_str = ""
+
+        context_part = f"{chunk_text}{metadata_str}"
+        context_parts.append(context_part)
+
+    context = "\n\n".join(context_parts)
+
+    # Build the system message and user prompt
+    system_message = (
+        "You are a helpful and knowledgeable assistant. "
+        "You have access to internal documents and data to help you answer questions. "
+        "Based on the context provided, answer the user's question clearly and conversationally, "
+        "as if you're explaining from your own expertise. "
+        "Also the date given which ever data is the latest that is updated information and the previous date is old information."
+    )
+
+    user_prompt = f"Context:\n{context}\n\nQuestion: {question}"
+
+    try:
+        # Initialize client
+        client = InferenceClient(
+            provider="together",
+            api_key=os.getenv("HF_TOKEN"),
+        )
+        
+        # Create chat completion
+        completion = client.chat.completions.create(
+            model=model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": system_message
+                },
+                {
+                    "role": "user", 
+                    "content": user_prompt
+                }
+            ],
+            max_tokens=512,
+            temperature=0.7
+        )
+        
+        return completion.choices[0].message.content
+        
+    except Exception as exc:
+        raise RuntimeError(f"Failed to query Hugging Face Together: {exc}") from exc
 
 
     

@@ -30,7 +30,9 @@ class ProjectService:
 
             return True
         except Exception as e:
-            deleteCollection(projectIndexName)
+            projectIndexName = convertStringToHyphen(request.name)
+            if projectIndexName:
+                deleteCollection(projectIndexName)
             raise HTTPException(status_code=500, detail=str(e))
         
     @staticmethod

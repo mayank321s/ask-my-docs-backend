@@ -5,7 +5,7 @@ from app.core.repository.vector_index_repository import VectorIndexRepository
 from app.core.repository.vector_namespace_repository import VectorNamespaceRepository
 from app.core.pinecone.pinecone_client import searchChunksOllama
 from app.core.qdrant.qdrant_client import searchChunksOllama
-from app.core.llm.llm import askOllamaLlm
+from app.core.llm.llm import askOllamaLlm, askHuggingFaceLLM
 
 
 class ChatService:
@@ -50,7 +50,8 @@ class ChatService:
                 }
                 formatted_hits.append(formatted_hit)
 
-            answer = askOllamaLlm(request.query, formatted_hits)
+            # answer = askOllamaLlm(request.query, formatted_hits)
+            answer = askHuggingFaceLLM(request.query, formatted_hits)
             return {"answer": answer}
 
         except Exception as e:

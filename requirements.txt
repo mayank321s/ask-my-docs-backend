@@ -24,3 +24,4 @@ python-docx
 langchain
 python-multipart
 qdrant_client
+huggingface_hub
