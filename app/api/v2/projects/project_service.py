@@ -9,7 +9,7 @@ from app.core.models.pydantic.category import CreateCategoryRequestDto, ListCate
 from fastapi import HTTPException
 from app.utils.common import convertStringToHyphen
 from tortoise.transactions import in_transaction
-from app.core.pinecone.pinecone_client import createIndex, deleteIndex, createNamespace, createIndexWithLocalEmbeddings, createNamespacOllama
+from app.core.qdrant.qdrant_client import createCollection, createNamespace, deleteCollection
 
 class ProjectService:
     """Provides CRUD operations for Projects for API v1."""
@@ -25,12 +25,14 @@ class ProjectService:
                 projectDetail = await ProjectRepository.create(request.name)
                 projectIndexName = convertStringToHyphen(request.name)
                 
-                createIndexWithLocalEmbeddings(projectIndexName)
+                createCollection(projectIndexName)
                 await VectorIndexRepository.create({"indexName": projectIndexName, "projectId": projectDetail.id})
 
             return True
         except Exception as e:
-            deleteIndex(projectIndexName)
+            projectIndexName = convertStringToHyphen(request.name)
+            if projectIndexName:
+                deleteCollection(projectIndexName)
             raise HTTPException(status_code=500, detail=str(e))
         
     @staticmethod
@@ -70,7 +72,7 @@ class ProjectService:
 
             async with in_transaction():
                 namespace = convertStringToHyphen(request.name)
-                createNamespacOllama(projectIndexDetails.indexName, namespace, projectDetail.name)
+                createNamespace(projectIndexDetails.indexName, namespace, projectDetail.name)
                 await VectorNamespaceRepository.create({"name": namespace, "categoryName": request.name, "indexId": projectIndexDetails.id})
 
             return True

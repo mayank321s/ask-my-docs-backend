@@ -29,22 +29,11 @@ class Document(Model):
     id = fields.IntField(pk=True)
     name = fields.CharField(max_length=255)
     type = fields.CharEnumField(enum_type=DocumentType, default=DocumentType.Other)
-
-
-
-    project = fields.ForeignKeyField(
-        "models.Project",
-        related_name="documents",
-        source_field="project_id",
-        on_delete=fields.CASCADE
-    )
-    namespace = fields.ForeignKeyField(
-        "models.VectorNamespace",
+    namespaceId = fields.IntField(
         related_name="documents",
         source_field="namespace_id",
         on_delete=fields.CASCADE
     )
-    file_path = fields.TextField(null=True)
     team = fields.JSONField(null=True)
     createdAt = fields.DatetimeField(auto_now_add=True, source_field="created_at")
     updatedAt = fields.DatetimeField(auto_now=True, source_field="updated_at")
