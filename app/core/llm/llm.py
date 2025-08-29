@@ -7,7 +7,7 @@ import json
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434")
 
 
-def askOllamaLlm(question: str, context_chunks: List[Dict], model: str = "llama3.1") -> str:
+def askOllamaLlm(question: str, context_chunks: List[Dict], model: str = "llama3.2:1b") -> str:
     """Send the question plus context to an Ollama-hosted model (default: Llama-3 7B).
 Pass a different `model` arg to override."""
 
