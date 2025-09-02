@@ -17,6 +17,7 @@ COMMENT ON TABLE "documents" IS 'Represents a uploaded/source document that is s
 CREATE TABLE IF NOT EXISTS "projects" (
     "id" SERIAL NOT NULL PRIMARY KEY,
     "name" VARCHAR(255) NOT NULL UNIQUE,
+    "description" TEXT,
     "user_id" INT NOT NULL,
     "created_at" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
