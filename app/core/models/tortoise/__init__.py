@@ -7,6 +7,7 @@ from .vector_indexes import VectorIndex
 from .vector_namespaces import VectorNamespace
 from .documents import Document, DocumentType
 from .vector_chunks import VectorChunk
+from .users import Users
 
 __all__ = [
     "Project",
@@ -15,4 +16,5 @@ __all__ = [
     "Document",
     "DocumentType",
     "VectorChunk",
+    "Users",
 ]

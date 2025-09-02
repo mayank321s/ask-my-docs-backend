@@ -6,6 +6,12 @@ class Project(Model):
 
     id = fields.IntField(pk=True)
     name = fields.CharField(max_length=255, unique=True)
+    userId = fields.ForeignKeyField(
+        "models.Users",
+        related_name="projects",
+        source_field="user_id",
+        on_delete=fields.CASCADE
+    )
     createdAt = fields.DatetimeField(auto_now_add=True, source_field="created_at")
     updatedAt = fields.DatetimeField(auto_now=True, source_field="updated_at")
 

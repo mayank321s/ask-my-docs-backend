@@ -25,3 +25,5 @@ langchain
 python-multipart
 qdrant_client
 huggingface_hub
+pyjwt
+bcrypt
