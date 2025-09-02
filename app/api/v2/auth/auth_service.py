@@ -1,7 +1,7 @@
 from fastapi import HTTPException
 from fastapi import status
 from app.core.models.pydantic.auth import LoginRequestDto, RegisterRequestDto
-from app.core.repository.users_repository import UsersRepository
+from app.core.repository.users_repository import UserRepository
 from app.utils.jwt import JWTHandler
 from app.utils.password_hasher import PasswordHasher
 
@@ -9,7 +9,7 @@ class AuthService:
     @staticmethod
     async def handleLogin(request: LoginRequestDto):
         try:
-            user = await UsersRepository.findOneByClause({"emailAddress": request.emailAddress})
+            user = await UserRepository.findOneByClause({"emailAddress": request.emailAddress})
             if not user:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND, 
@@ -23,7 +23,7 @@ class AuthService:
                 )
             
             accessToken = JWTHandler.createAccessToken(
-                userId=str(user.id), 
+                userId=user.id, 
                 emailAddress=user.emailAddress
             )
             
@@ -43,7 +43,7 @@ class AuthService:
     @staticmethod
     async def handleRegister(request: RegisterRequestDto):
         try:
-            existing_user = await UsersRepository.findOneByClause({"emailAddress": request.emailAddress})
+            existing_user = await UserRepository.findOneByClause({"emailAddress": request.emailAddress})
             if existing_user:
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT, 
@@ -60,10 +60,10 @@ class AuthService:
                 "roleCode": "user"
             }
             
-            newUser = await UsersRepository.create(userDataToCreate)
+            newUser = await UserRepository.create(userDataToCreate)
             
             accessToken = JWTHandler.createAccessToken(
-                userId=str(newUser.id), 
+                userId=newUser.id, 
                 emailAddress=newUser.emailAddress
             )
             
@@ -71,9 +71,6 @@ class AuthService:
                 "message": "Registration successful",
                 "accessToken": accessToken,
             }
-            
-        except HTTPException:
-            raise
         except Exception as e:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 

@@ -19,4 +19,4 @@ projects_routerV2 = TypedAPIRouter(router=projects_router_v2, prefix="/v2", tags
 documents_routerV2 = TypedAPIRouter(router=documents_router_v2, prefix="/v2", tags=["documents"], dependencies=[Depends(JWTHandler.decodeAccessToken)])
 chat_routerV2 = TypedAPIRouter(router=chat_router_v2, prefix="/v2", tags=["chat"], dependencies=[Depends(JWTHandler.decodeAccessToken)])
 github_routerV2 = TypedAPIRouter(router=github_router_v2, prefix="/v2", tags=["github"], dependencies=[Depends(JWTHandler.decodeAccessToken)])
-auth_routerV2 = TypedAPIRouter(router=auth_router_v2, prefix="/v2", tags=["auth"], dependencies=[Depends(JWTHandler.decodeAccessToken)])
+auth_routerV2 = TypedAPIRouter(router=auth_router_v2, prefix="/v2", tags=["auth"])

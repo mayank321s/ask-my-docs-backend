@@ -8,20 +8,19 @@ from fastapi import status
 import os
 
 JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY")
-JWT_ALGORITHM = os.getenv("JWT_ALGORITHM")
 JWT_EXPIRATION_HOURS = int(os.getenv("JWT_EXPIRATION_HOURS", 24))
 
 class JWTHandler:
     @staticmethod
-    def createAccessToken(user_id: str, email: str) -> str:
+    def createAccessToken(userId: int, emailAddress: str) -> str:
         """Create JWT token with user_id and email"""
         payload = {
-            "user_id": user_id,
-            "email": email,
+            "userId": userId,
+            "emailAddress": emailAddress,
             "exp": datetime.utcnow() + timedelta(hours=JWT_EXPIRATION_HOURS),
             "iat": datetime.utcnow()
         }
-        token = jwt.encode(payload, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
+        token = jwt.encode(payload, JWT_SECRET_KEY)
         return token
     
     @staticmethod

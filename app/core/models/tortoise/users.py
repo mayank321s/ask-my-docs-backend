@@ -1,8 +1,7 @@
 from tortoise import Model, fields
 
 
-class Users(Model):
-    """Individual vector chunk belonging to a document."""
+class User(Model):
 
     id = fields.IntField(pk=True)
     firstName = fields.CharField(max_length=255, unique=True, source_field="first_name")
