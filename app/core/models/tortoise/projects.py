@@ -6,6 +6,7 @@ class Project(Model):
 
     id = fields.IntField(pk=True)
     name = fields.CharField(max_length=255, unique=True)
+    description = fields.TextField(null=True, blank=True)
     userId = fields.IntField(
         related_name="projects",
         source_field="user_id",
