@@ -3,6 +3,12 @@ import requests
 from typing import List, Dict
 import json
 from huggingface_hub import InferenceClient
+from typing import List, Dict, Optional, Tuple
+from langchain_core.runnables.history import RunnableWithMessageHistory
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import StrOutputParser
+from app.core.llm.langchain_wrapper import HuggingFaceLLMWrapper
+from app.core.llm.memory_utils import get_session_history
 
 # URL of the locally running Ollama server (default port 11434)
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434")
@@ -173,28 +179,116 @@ def askHuggingFaceLLM(question: str, context_chunks: List[Dict], model: str = "Q
     except Exception as exc:
         raise RuntimeError(f"Failed to query Hugging Face Together: {exc}") from exc
 
-
+def askHuggingFaceLLMWithMemory(
+    question: str, 
+    context_chunks: List[Dict], 
+    session_id: str = "default",
+    model: str = "Qwen/Qwen2.5-7B-Instruct"
+) -> Tuple[str, str]:
+    """
+    Ask HuggingFace LLM with conversation memory using modern LangChain approach.
     
-AZURE_API_KEY = os.getenv("AZURE_API_KEY")
-AZURE_MODEL_URL = "https://1lmhubpoc8598770946.services.ai.azure.com/models"  # Cleaned endpoint
-# AZURE_MODEL_URL = "https://1lmhubpoc8598770946.openai.azure.com/openai/deployments/Ministral-3B/chat/completions?api-version=2024-02-15-preview"
+    Args:
+        question: User's question
+        context_chunks: List of context chunks from vector search
+        session_id: Session identifier for memory management
+        model: Model name to use
+        
+    Returns:
+        tuple: (answer, session_id)
+    """
+    # Build context string (same as your original logic)
+    context_parts = []
+    for chunk in context_chunks:
+        fields = chunk.get("fields", {})
+        chunk_text = fields.get("chunk_text", "")
+        metadata = {k: v for k, v in fields.items() if k != "chunk_text"}
+        
+        if metadata:
+            meta_json = json.dumps(metadata, indent=2, default=str)
+            metadata_str = f"\n[Metadata]\n{meta_json}\n"
+        else:
+            metadata_str = ""
+        
+        context_part = f"{chunk_text}{metadata_str}"
+        context_parts.append(context_part)
 
-def askAzureMinistral(question: str, context_chunks: List[Dict]) -> str:
-    context = "\n\n".join(chunk["fields"].get("chunk_text", "") for chunk in context_chunks)
-    prompt = f"Use the following context to answer the question:\n\n{context}\n\nQuestion: {question}"
+    context = "\n\n".join(context_parts)
 
-    payload = {
-        "messages": [
-            {"role": "system", "content": "You are a helpful assistant."},
-            {"role": "user", "content": prompt}
-        ]
-    }
+    # Create the conversational chain
+    conversational_chain = _get_or_create_runnable_chain(model)
+    
+    # Enhanced input with context
+    enhanced_input = f"""Context:
+{context}
 
-    headers = {
-        "Content-Type": "application/json",
-        "api-key": AZURE_API_KEY
-    }
+Question: {question}"""
+    
+    # Run with session-based memory
+    try:
+        answer = conversational_chain.invoke(
+            {"input": enhanced_input},
+            config={"configurable": {"session_id": session_id}}
+        )
+        return answer, session_id
+    except Exception as e:
+        return f"Error processing with memory: {str(e)}", session_id
 
-    response = requests.post(AZURE_MODEL_URL, headers=headers, json=payload, timeout=300)
-    response.raise_for_status()
-    return response.json()["choices"][0]["message"]["content"]
+def _get_or_create_runnable_chain(model: str) -> RunnableWithMessageHistory:
+    """Create RunnableWithMessageHistory chain (cached)."""
+    # Use a simple cache mechanism
+    cache_key = f"chain_{model}"
+    
+    if not hasattr(_get_or_create_runnable_chain, "chains"):
+        _get_or_create_runnable_chain.chains = {}
+    
+    if cache_key not in _get_or_create_runnable_chain.chains:
+        # Create HuggingFace LLM wrapper
+        hf_llm = HuggingFaceLLMWrapper(model_name=model)
+        
+        # Create prompt template
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", """You are a helpful and knowledgeable assistant. 
+You have access to internal documents and data to help you answer questions. 
+Based on the context provided, answer the user's question clearly and conversationally, 
+as if you're explaining from your own expertise. 
+The date given which ever data is the latest that is updated information and the previous date is old information."""),
+            ("placeholder", "{chat_history}"),
+            ("human", "{input}")
+        ])
+        
+        # Create the basic chain
+        chain = prompt | hf_llm | StrOutputParser()
+        
+        # Wrap with message history
+        conversational_chain = RunnableWithMessageHistory(
+            chain,
+            get_session_history,
+            input_messages_key="input",
+            history_messages_key="chat_history"
+        )
+        
+        _get_or_create_runnable_chain.chains[cache_key] = conversational_chain
+    
+    return _get_or_create_runnable_chain.chains[cache_key]
+
+def get_conversation_history(session_id: str) -> List[Dict]:
+    """Get formatted conversation history for a session."""
+    from app.core.llm.memory_utils import get_session_history
+    
+    history = get_session_history(session_id)
+    formatted_history = []
+    
+    for message in history.messages:
+        formatted_history.append({
+            "type": message.type,  # "human" or "ai"
+            "content": message.content,
+            "timestamp": getattr(message, "timestamp", None)
+        })
+    
+    return formatted_history
+
+def clear_conversation_memory(session_id: str) -> bool:
+    """Clear conversation memory for a session."""
+    from app.core.llm.memory_utils import clear_session_history
+    return clear_session_history(session_id)
