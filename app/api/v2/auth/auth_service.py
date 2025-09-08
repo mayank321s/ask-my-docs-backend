@@ -24,7 +24,8 @@ class AuthService:
             
             accessToken = JWTHandler.createAccessToken(
                 userId=user.id, 
-                emailAddress=user.emailAddress
+                emailAddress=user.emailAddress,
+                roleCode=user.roleCode
             )
             
             return {
@@ -64,7 +65,8 @@ class AuthService:
             
             accessToken = JWTHandler.createAccessToken(
                 userId=newUser.id, 
-                emailAddress=newUser.emailAddress
+                emailAddress=newUser.emailAddress,
+                roleCode=newUser.roleCode
             )
             
             return {

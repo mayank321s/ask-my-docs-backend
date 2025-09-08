@@ -34,10 +34,13 @@ class ProjectService:
             raise HTTPException(status_code=500, detail=str(e))
         
     @staticmethod
-    async def handleListAllProjects():
+    async def handleListAllProjects(user: dict):
         """Return all projects with their associated vector index name."""
         try:
-            projects_details = await ProjectRepository.list_all()
+            if user.get("roleCode") == "user":
+                projects_details = await ProjectRepository.findAllByClause({"userId": user.get("userId")})
+            else:
+                projects_details = await ProjectRepository.list_all()
             result: list[ListProjectDto] = []
             for project in projects_details:
                 indexDetails = await VectorIndexRepository.findOneByClause({"projectId": project.id})
@@ -57,9 +60,12 @@ class ProjectService:
             raise HTTPException(status_code=500, detail=str(e))
 
     @staticmethod
-    async def handleCreateProjectCategory(projectId: int, request: CreateCategoryRequestDto):
-        try:     
-            projectDetail = await ProjectRepository.get_by_id(projectId)
+    async def handleCreateProjectCategory(projectId: int, request: CreateCategoryRequestDto, user: dict):
+        try:
+            if user.get("roleCode") == "user":
+                projectDetail = await ProjectRepository.findAllByClause({"userId": user.get("userId")})
+            else:
+                projectDetail = await ProjectRepository.list_all()
             if not projectDetail:
                 raise HTTPException(status_code=404, detail="Project not found")
             

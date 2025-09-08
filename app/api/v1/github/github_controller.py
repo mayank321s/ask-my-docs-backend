@@ -1,9 +1,10 @@
-from fastapi import APIRouter, Query
-from typing import Optional
+from fastapi import APIRouter, Query, Depends
+from typing import Optional, Dict
 import os
 
 from urllib3 import response
 from ..github.github_service import GitHubService
+from app.utils.jwt import get_current_user
 
 router = APIRouter(prefix="/github", tags=["github"])
 
@@ -18,8 +19,9 @@ async def downloadGithubRepository(
         None,
         description="Branch, tag, or commit SHA"
     ),
+    current_user: Dict = Depends(get_current_user)
 ):
-    await GitHubService.downloadRepository(owner, repo, projectId, categoryId, branchName, ref)
+    await GitHubService.downloadRepository(owner, repo, projectId, categoryId, branchName, ref, current_user)
     response = {
         "status": "success",
         "repository": f"{owner}/{repo}",
@@ -33,8 +35,9 @@ async def fetchPrFiles(
     prNumber: int = Query(..., description="Pull request number"),
     projectId: int = Query(..., description="Project ID"),
     categoryId: int = Query(..., description="Category ID"),
+    current_user: Dict = Depends(get_current_user)
 ):
-    await GitHubService.fetchAndStorePrFiles(owner, repo, prNumber, projectId, categoryId)
+    await GitHubService.fetchAndStorePrFiles(owner, repo, prNumber, projectId, categoryId, current_user)
     response = {
         "status": "success",
         "repository": f"{owner}/{repo}",
@@ -48,8 +51,9 @@ async def fetchAllMergedPr(
     repo: str = Query(..., description="Repository name"),
     projectId: int = Query(..., description="Project ID"),
     categoryId: int = Query(..., description="Category ID"),
+    current_user: Dict = Depends(get_current_user)
 ):
-    await GitHubService.fetchAndStoreAllMergedPrs(owner, repo, projectId, categoryId)
+    await GitHubService.fetchAndStoreAllMergedPrs(owner, repo, projectId, categoryId, current_user)
     response ={
         "status": "success",
         "repository": f"{owner}/{repo}",

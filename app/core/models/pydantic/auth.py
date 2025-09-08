@@ -12,3 +12,7 @@ class RegisterRequestDto(BaseModel):
     emailAddress: str = Field(..., max_length=255)
     password: str = Field(..., max_length=255)
     
+class jwtDto(BaseModel):
+    userId: int
+    emailAddress: str
+    roleCode: str
