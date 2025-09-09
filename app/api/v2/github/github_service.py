@@ -12,6 +12,7 @@ from typing import Optional
 from app.core.repository.project_repository import ProjectRepository
 from app.core.repository.vector_index_repository import VectorIndexRepository
 from app.core.repository.vector_namespace_repository import VectorNamespaceRepository
+from app.core.repository.github_token_repository import GithubTokenRepository
 from app.core.qdrant.qdrant_client import ( upsertChunksOllama, processCodebaseFolder )
 from app.core.chunker.chunker import chunkText
 
@@ -20,16 +21,17 @@ class GitHubService:
     ASSETS_DIR = os.path.abspath("tempAssets")
 
     @staticmethod
-    def getHeaders() -> dict:
+    async def getHeaders(userId) -> dict:
         headers = {
             "Accept": "application/vnd.github+json",
         }
-        if token := os.getenv("GITHUB_TOKEN"):
-            headers["Authorization"] = f"Bearer {token}"
+        tokenDetails = await GithubTokenRepository.findOneByClause({"userId": userId})
+        if tokenDetails and tokenDetails.token:
+            headers["Authorization"] = f"Bearer {tokenDetails.token}"
         return headers
 
     @staticmethod
-    async def downloadRepository(owner: str, repo: str, projectId: int, categoryId: int,branchName: str, ref: Optional[str] = None) -> bool:
+    async def downloadRepository(owner: str, repo: str, projectId: int, categoryId: int, branchName: str, currentUser: dict, ref: Optional[str] = None) -> bool:
         try:
             projectDetail = await ProjectRepository.get_by_id(projectId)
             if not projectDetail:
@@ -48,7 +50,7 @@ class GitHubService:
                 repoInfoUrl = f"repos/{owner}/{repo}"
                 response = requests.get(
                     urljoin(GitHubService.GITHUB_API_BASE, repoInfoUrl),
-                    headers=GitHubService.getHeaders()
+                    headers=GitHubService.getHeaders(userId=currentUser.get("userId"))
                 )
                 response.raise_for_status()
                 url = f"repos/{owner}/{repo}/zipball/{branchName}"
@@ -59,7 +61,7 @@ class GitHubService:
             zip_path = os.path.join(GitHubService.ASSETS_DIR, zip_filename)
             extract_dir = os.path.join(GitHubService.ASSETS_DIR, f"{owner}_{repo}")
 
-            with requests.get(downloadUrl, headers=GitHubService.getHeaders(), stream=True) as r:
+            with requests.get(downloadUrl, headers=GitHubService.getHeaders(userId=currentUser.get("userId")), stream=True) as r:
                 r.raise_for_status()
                 with open(zip_path, 'wb') as f:
                     for chunk in r.iter_content(chunk_size=8192):
@@ -103,7 +105,7 @@ class GitHubService:
             )
 
     @staticmethod
-    async def fetchFileContentAtRef(owner: str, repo: str, filePath: str, ref: str) -> Optional[str]:
+    async def fetchFileContentAtRef(owner: str, repo: str, filePath: str, ref: str, currentUser: dict) -> Optional[str]:
         """
         Fetch file content at a specific commit/ref
         """
@@ -113,7 +115,7 @@ class GitHubService:
             
             response = requests.get(
                 urljoin(GitHubService.GITHUB_API_BASE, url),
-                headers=GitHubService.getHeaders(),
+                headers=GitHubService.getHeaders(userId=currentUser.get("userId")),
                 params=params
             )
             response.raise_for_status()
@@ -132,7 +134,7 @@ class GitHubService:
             return None
 
     @staticmethod
-    async def fetchAndStorePrFiles(owner: str, repo: str, prNumber: int, projectId: int, categoryId: int) -> bool:
+    async def fetchAndStorePrFiles(owner: str, repo: str, prNumber: int, projectId: int, categoryId: int, currentUser: dict) -> bool:
         """
         Fetch all files changed in a PR, chunk them, and store in Pinecone
         """
@@ -149,7 +151,7 @@ class GitHubService:
             filesUrl = f"repos/{owner}/{repo}/pulls/{prNumber}/files"
             filesResponse = requests.get(
                 urljoin(GitHubService.GITHUB_API_BASE, filesUrl),
-                headers=GitHubService.getHeaders()
+                headers=GitHubService.getHeaders(userId=currentUser.get("userId"))
             )
             filesResponse.raise_for_status()
             changedFiles = filesResponse.json()
@@ -157,7 +159,7 @@ class GitHubService:
             prUrl = f"repos/{owner}/{repo}/pulls/{prNumber}"
             prResponse = requests.get(
                 urljoin(GitHubService.GITHUB_API_BASE, prUrl),
-                headers=GitHubService.getHeaders()
+                headers=GitHubService.getHeaders(userId=currentUser.get("userId"))
             )
             prResponse.raise_for_status()
             prData = prResponse.json()
@@ -231,7 +233,7 @@ class GitHubService:
             return False
         
     @staticmethod
-    async def fetchAndStoreAllMergedPrs(owner: str, repo: str, projectId: int, categoryId: int) -> dict:
+    async def fetchAndStoreAllMergedPrs(owner: str, repo: str, projectId: int, categoryId: int, currentUser: dict) -> dict:
         """
         Fetch all merged PRs from a repository and store each one in the vector database
         """
@@ -262,7 +264,7 @@ class GitHubService:
                 
                 response = requests.get(
                     urljoin(GitHubService.GITHUB_API_BASE, prs_url),
-                    headers=GitHubService.getHeaders(),
+                    headers=GitHubService.getHeaders(userId=currentUser.get("userId")),
                     params=params
                 )
                 response.raise_for_status()
@@ -350,4 +352,40 @@ class GitHubService:
                 status_code=500,
                 detail=f"An error occurred while processing merged PRs: {str(e)}"
             )
+
+    @staticmethod
+    async def handleStoreGithubToken(githubToken: str, currentUser: dict) -> dict:
+        try:
+            tokenDetails = await GithubTokenRepository.findOneByClause({"userId": currentUser.get("userId")})
+            if not tokenDetails:
+                await GithubTokenRepository.create({
+                    "userId": currentUser.get("userId"),
+                    "token": githubToken
+                })
+                return {"status": "success", "message": "GitHub token stored successfully"}
+            else:
+                await GithubTokenRepository.update(tokenDetails.id, githubToken)
+                return {"status": "success", "message": "GitHub token updated successfully"}
+            
+        except Exception as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"An error occurred while storing github token: {str(e)}"
+            )
+            
+    @staticmethod
+    async def handleGetGithubToken(currentUser: dict) -> bool:
+        try:
+            tokenDetails = await GithubTokenRepository.findOneByClause({"userId": currentUser.get("userId")})
+            if not tokenDetails:
+                return False
+            else:
+                return True
+            
+        except Exception as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"An error occurred while fething github token: {str(e)}"
+            )
+
 

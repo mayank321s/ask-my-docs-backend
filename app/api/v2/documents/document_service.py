@@ -38,28 +38,27 @@ class DocumentService:
             elif filename_lower.endswith(".docx"):
                 text = extractTextFromDocx(file)
             else:
-                # treat as plain text
                 text = file.file.read().decode(errors="ignore")
             chunks = chunkText(text, fileMetadata, file.filename)
+            
+            chunk_ids = [chunk["_id"] for chunk in chunks]
+            
             async with in_transaction():
                 upsertChunksOllama(projectIndexDetails.indexName, vectorNamespaceDetails.name, chunks)
-                 # Step 2: Create document entry
                 documentDetail = await DocumentRepository.create({
                     "name": file.filename,
                     "namespaceId": vectorNamespaceDetails.id,
                 })
+                await VectorChunkRepository.create({
+                    "documentId": documentDetail.id,
+                    "chunkIds": chunk_ids,
+                    "metadata": metadata
+                })
 
-                # Step 3: Insert each chunk record
-                for chunk in chunks:
-                    await VectorChunkRepository.create({
-                        "documentId": documentDetail.id,
-                        "chunkId": chunk["_id"],
-                        "metadata": metadata
-                    })
- 
             return True
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
+
 
     
         

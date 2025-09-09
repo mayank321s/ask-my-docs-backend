@@ -16,7 +16,7 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 async def search_and_answer(
     request: SearchAndAnswerRequestDto,
     use_memory: bool = Query(True, description="Enable conversation memory"),
-    current_user: Dict = Depends(get_current_user)
+    currentUser: Dict = Depends(get_current_user)
 ):
     """
     Search for relevant content and generate an answer.
@@ -24,7 +24,7 @@ async def search_and_answer(
     - **use_memory**: Enable/disable conversation memory
     - **sessionId**: Optional session ID for memory (auto-generated if not provided)
     """
-    return await ChatService.handleSearchAndAnswer(request, use_memory, current_user)
+    return await ChatService.handleSearchAndAnswer(request, use_memory)
 
 @router.delete(
     "/session/{session_id}",
@@ -34,10 +34,10 @@ async def search_and_answer(
 )
 async def clear_session(
     session_id: str = Path(..., description="Session ID to clear"),
-    current_user: Dict = Depends(get_current_user)
+    currentUser: Dict = Depends(get_current_user)
 ):
     """Clear conversation memory for a specific session."""
-    return ChatService.clear_session(session_id, current_user)
+    return ChatService.clear_session(session_id)
 
 @router.get(
     "/session/{session_id}/history",
@@ -47,19 +47,19 @@ async def clear_session(
 )
 async def get_session_history(
     session_id: str = Path(..., description="Session ID to retrieve history for"),
-    current_user: Dict = Depends(get_current_user)
+    currentUser: Dict = Depends(get_current_user)
 ):
     """Get conversation history for a specific session."""
-    return ChatService.get_session_history(session_id, current_user)
+    return ChatService.get_session_history(session_id)
 
 @router.get(
     "/sessions",
     status_code=status.HTTP_200_OK,
     description="Get all active sessions with metadata"
 )
-async def get_all_sessions(current_user: Dict = Depends(get_current_user)):
+async def get_all_sessions(currentUser: Dict = Depends(get_current_user)):
     """Get all active sessions with message counts."""
-    return ChatService.get_all_active_sessions(current_user)
+    return ChatService.get_all_active_sessions(currentUser)
 
 @router.post(
     "/session/{session_id}/clear",
@@ -69,16 +69,16 @@ async def get_all_sessions(current_user: Dict = Depends(get_current_user)):
 )
 async def clear_session_post(
     session_id: str = Path(..., description="Session ID to clear"),
-    current_user: Dict = Depends(get_current_user)
+    currentUser: Dict = Depends(get_current_user)
 ):
     """Alternative endpoint to clear session using POST method."""
-    return ChatService.clear_session(session_id, current_user)
+    return ChatService.clear_session(session_id)
 
 @router.get(
     "/health",
     status_code=status.HTTP_200_OK,
     description="Health check for chat service"
 )
-async def health_check(current_user: Dict = Depends(get_current_user)):
+async def health_check(currentUser: Dict = Depends(get_current_user)):
     """Health check endpoint."""
-    return ChatService.health_check(current_user)
+    return ChatService.health_check(currentUser)

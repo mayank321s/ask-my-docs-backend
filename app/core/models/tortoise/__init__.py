@@ -8,6 +8,7 @@ from .vector_namespaces import VectorNamespace
 from .documents import Document, DocumentType
 from .vector_chunks import VectorChunk
 from .users import User
+from .github_tokens import GithubToken
 
 __all__ = [
     "Project",
@@ -17,4 +18,5 @@ __all__ = [
     "DocumentType",
     "VectorChunk",
     "User",
+    "GithubToken",
 ]

@@ -13,8 +13,8 @@ router = APIRouter(prefix="/chat", tags=["chat"])
     status_code=status.HTTP_201_CREATED,
     description="Search and answer",
 )
-async def searchAndAnswer(request: SearchAndAnswerRequestDto, current_user: Dict = Depends(get_current_user)):
-    return await ChatService.handleSearchAndAnswer(request, current_user)
+async def searchAndAnswer(request: SearchAndAnswerRequestDto, currentUser: Dict = Depends(get_current_user)):
+    return await ChatService.handleSearchAndAnswer(request, currentUser)
 
 
 @router.post(
@@ -22,9 +22,9 @@ async def searchAndAnswer(request: SearchAndAnswerRequestDto, current_user: Dict
     status_code=status.HTTP_201_CREATED,
     description="Search and answer",
 )
-async def searchAndAnswerOllama(request: SearchAndAnswerRequestDto, current_user: Dict = Depends(get_current_user)):
-    return await ChatService.handleSearchAndAnswerOllama(request, current_user)
+async def searchAndAnswerOllama(request: SearchAndAnswerRequestDto, currentUser: Dict = Depends(get_current_user)):
+    return await ChatService.handleSearchAndAnswerOllama(request, currentUser)
 
 @router.get("/health", status_code=status.HTTP_200_OK, response_class=PlainTextResponse)
-async def chat_health(current_user: Dict = Depends(get_current_user)):
-    return ChatService.health_check(current_user)
+async def chat_health(currentUser: Dict = Depends(get_current_user)):
+    return ChatService.health_check(currentUser)

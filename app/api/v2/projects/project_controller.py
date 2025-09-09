@@ -16,8 +16,8 @@ router = APIRouter(prefix="/projects", tags=["projects"])
     status_code=status.HTTP_201_CREATED,
     description="Create a new project",
 )
-async def createProject(request: CreateProjectRequestDto, current_user: Dict = Depends(get_current_user)):
-    project = await ProjectService.create(request, current_user)
+async def createProject(request: CreateProjectRequestDto, currentUser: Dict = Depends(get_current_user)):
+    project = await ProjectService.create(request, currentUser)
     return project
 
 
@@ -26,8 +26,8 @@ async def createProject(request: CreateProjectRequestDto, current_user: Dict = D
     response_model=List[ListProjectDto],
     description="Get all projects",
 )
-async def listProjects(current_user: Dict = Depends(get_current_user)):
-    return await ProjectService.handleListAllProjects(current_user)
+async def listProjects(currentUser: Dict = Depends(get_current_user)):
+    return await ProjectService.handleListAllProjects(currentUser)
 
 
 @router.post(
@@ -35,8 +35,8 @@ async def listProjects(current_user: Dict = Depends(get_current_user)):
     status_code=status.HTTP_201_CREATED,
     description="Create a new category",
 )
-async def createProjectCategory(projectId: int, request: CreateCategoryRequestDto, current_user: Dict = Depends(get_current_user)):
-    category = await ProjectService.handleCreateProjectCategory(projectId, request, current_user)
+async def createProjectCategory(projectId: int, request: CreateCategoryRequestDto):
+    category = await ProjectService.handleCreateProjectCategory(projectId, request)
     return category
 
 @router.get(
@@ -44,5 +44,5 @@ async def createProjectCategory(projectId: int, request: CreateCategoryRequestDt
     response_model=List[ListCategoryDto],
     description="Get all project categories",
 )
-async def listProjectCategories(projectId: int, current_user: Dict = Depends(get_current_user)):
-    return await ProjectService.handleListProjectCategoriesByProjectId(projectId, current_user)
+async def listProjectCategories(projectId: int):
+    return await ProjectService.handleListProjectCategoriesByProjectId(projectId)

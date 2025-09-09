@@ -12,8 +12,8 @@ router = APIRouter(prefix="/documents", tags=["documents"])
     status_code=status.HTTP_201_CREATED,
     description="Upload a document to vector DB",
 )
-async def uploadDocumentOllama(projectId: int = Form(...), file: UploadFile = Form(...), categoryId: int = Form(...), metadata: str = Form(...), current_user: Dict = Depends(get_current_user)):
-    document = await DocumentService.handleUploadDocument(file, projectId, categoryId, metadata, current_user)
+async def uploadDocumentOllama(projectId: int = Form(...), file: UploadFile = Form(...), categoryId: int = Form(...), metadata: str = Form(...), currentUser: Dict = Depends(get_current_user)):
+    document = await DocumentService.handleUploadDocument(file, projectId, categoryId, metadata)
     return document
 
 
@@ -23,5 +23,5 @@ async def uploadDocumentOllama(projectId: int = Form(...), file: UploadFile = Fo
     response_model=List[ListDocumentDto],
     description="Get all documents",
 )
-async def listDocuments(categoryId: int, current_user: Dict = Depends(get_current_user)):
-    return await DocumentService.handleListAllDocumentsByCategoryId(categoryId, current_user)
+async def listDocuments(categoryId: int, currentUser: Dict = Depends(get_current_user)):
+    return await DocumentService.handleListAllDocumentsByCategoryId(categoryId)

@@ -7,9 +7,9 @@ from app.core.models.tortoise import Project
 class ProjectRepository:
 
     @staticmethod
-    async def create(name: str) -> Project:
-        logger.info("[v1] Creating project: {}", name)
-        return await Project.create(name=name)
+    async def create(createProjectDto: Dict[str, Any]) -> Project:
+            logger.info("[v1] Creating Project: {}", createProjectDto)
+            return await Project.create(**createProjectDto)
 
     @staticmethod
     async def list_all() -> List[Project]:

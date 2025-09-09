@@ -19,9 +19,9 @@ async def downloadGithubRepository(
         None,
         description="Branch, tag, or commit SHA"
     ),
-    current_user: Dict = Depends(get_current_user)
+    currentUser: Dict = Depends(get_current_user)
 ):
-    await GitHubService.downloadRepository(owner, repo, projectId, categoryId, branchName, ref, current_user)
+    await GitHubService.downloadRepository(owner, repo, projectId, categoryId, branchName, currentUser, ref)
     response = {
         "status": "success",
         "repository": f"{owner}/{repo}",
@@ -35,9 +35,9 @@ async def fetchPrFiles(
     prNumber: int = Query(..., description="Pull request number"),
     projectId: int = Query(..., description="Project ID"),
     categoryId: int = Query(..., description="Category ID"),
-    current_user: Dict = Depends(get_current_user)
+    currentUser: Dict = Depends(get_current_user)
 ):
-    await GitHubService.fetchAndStorePrFiles(owner, repo, prNumber, projectId, categoryId, current_user)
+    await GitHubService.fetchAndStorePrFiles(owner, repo, prNumber, projectId, categoryId, currentUser)
     response = {
         "status": "success",
         "repository": f"{owner}/{repo}",
@@ -51,12 +51,33 @@ async def fetchAllMergedPr(
     repo: str = Query(..., description="Repository name"),
     projectId: int = Query(..., description="Project ID"),
     categoryId: int = Query(..., description="Category ID"),
-    current_user: Dict = Depends(get_current_user)
+    currentUser: Dict = Depends(get_current_user)
 ):
-    await GitHubService.fetchAndStoreAllMergedPrs(owner, repo, projectId, categoryId, current_user)
+    await GitHubService.fetchAndStoreAllMergedPrs(owner, repo, projectId, categoryId, currentUser)
     response ={
         "status": "success",
         "repository": f"{owner}/{repo}",
     }
     return response
 
+@router.post("/store-github-token")
+async def storeGithubToken(
+    githubToken: int = Query(..., description="GitHub Token"),
+    currentUser: Dict = Depends(get_current_user)
+):
+    await GitHubService.handleStoreGithubToken(githubToken, currentUser)
+    response ={
+        "status": "success",
+    }
+    return response
+
+@router.get("/get-github-token")
+async def getGithubToken(
+    currentUser: Dict = Depends(get_current_user)
+):
+    token = await GitHubService.handleGetGithubToken(currentUser)
+    response ={
+        "status": "success",
+        "github_token": token
+    }
+    return response
