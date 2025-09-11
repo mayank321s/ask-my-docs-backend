@@ -30,6 +30,10 @@ class AuthService:
             
             return {
                 "message": "Login successful",
+                "firstName": user.firstName,
+                "lastName": user.lastName,
+                "emailAddress": user.emailAddress,
+                "roleCode": user.roleCode,
                 "accessToken": accessToken,
             }
             

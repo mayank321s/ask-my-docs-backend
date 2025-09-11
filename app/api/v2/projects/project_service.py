@@ -17,13 +17,7 @@ class ProjectService:
     @staticmethod
     async def create(request: CreateProjectRequestDto, user: dict):
         try:
-            if user.get("roleCode") == "user":
-                projectDetail = await ProjectRepository.findAllByClause({"userId": user.get("userId")})
-            else:
-                projectDetail = await ProjectRepository.list_all()
-            if not projectDetail:
-                raise HTTPException(status_code=404, detail="Project not found")
-            existing = await ProjectRepository.findOneByClause({"name": request.name})
+            existing = await ProjectRepository.findOneByClause({"name": request.name, "userId": user.get("userId")})
             if existing:
                 raise HTTPException(status_code=409, detail="Project with this name already exists")
 
