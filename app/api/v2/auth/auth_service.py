@@ -4,6 +4,7 @@ from app.core.models.pydantic.auth import LoginRequestDto, RegisterRequestDto
 from app.core.repository.users_repository import UserRepository
 from app.utils.jwt import JWTHandler
 from app.utils.password_hasher import PasswordHasher
+from app.core.repository.github_token_repository import GithubTokenRepository
 
 class AuthService:
     @staticmethod
@@ -28,6 +29,8 @@ class AuthService:
                 roleCode=user.roleCode
             )
             
+            githubToken = await GithubTokenRepository.findOneByClause({"userId": user.id})
+            
             return {
                 "message": "Login successful",
                 "firstName": user.firstName,
@@ -35,6 +38,7 @@ class AuthService:
                 "emailAddress": user.emailAddress,
                 "roleCode": user.roleCode,
                 "accessToken": accessToken,
+                "githubToken": True if githubToken else False
             }
             
         except HTTPException:
