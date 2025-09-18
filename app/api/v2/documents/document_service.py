@@ -80,3 +80,31 @@ class DocumentService:
             return result
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
+        
+    @staticmethod
+    async def handleDeleteDocument(documentId: int):
+        try:
+            # Verify document exists
+            documentDetail = await DocumentRepository.findOneByClause({"id": documentId})
+            if not documentDetail:
+                raise HTTPException(status_code=404, detail="Document not found")
+
+            documentChunks = await VectorChunkRepository.findAllByClause({"documentId": documentId})
+            chunk_ids = [chunk.id for chunk in documentChunks] if documentChunks else []
+
+            # Delete in a single transaction
+            async with in_transaction():
+                # Delete chunks first (children before parent)
+                if chunk_ids:
+                    await VectorChunkRepository.deleteBulkByIds(chunk_ids)
+                
+                # Delete the document
+                await DocumentRepository.deleteByClause({"id": documentId})
+
+            return True
+
+        except HTTPException:
+            # Re-raise HTTP exceptions as-is
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to delete document: {str(e)}")

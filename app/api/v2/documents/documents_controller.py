@@ -25,3 +25,11 @@ async def uploadDocumentOllama(projectId: int = Form(...), file: UploadFile = Fo
 )
 async def listDocuments(categoryId: int, currentUser: Dict = Depends(get_current_user)):
     return await DocumentService.handleListAllDocumentsByCategoryId(categoryId)
+
+@router.delete(
+    "/{documentId}",
+    status_code=status.HTTP_200_OK,
+    description="Delete a document by ID",
+)
+async def deleteDocument(documentId: int, currentUser: Dict = Depends(get_current_user)):
+    return await DocumentService.handleDeleteDocument(documentId)
