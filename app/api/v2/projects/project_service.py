@@ -2,6 +2,8 @@
 
 from argparse import Namespace
 from app.core.repository.project_repository import ProjectRepository
+from app.core.repository.document_repository import DocumentRepository
+from app.core.repository.vector_chunks_repository import VectorChunkRepository
 from app.core.repository.vector_index_repository import VectorIndexRepository
 from app.core.models.pydantic.projects import CreateProjectRequestDto, ListProjectDto
 from app.core.repository.vector_namespace_repository import VectorNamespaceRepository
@@ -9,7 +11,7 @@ from app.core.models.pydantic.category import CreateCategoryRequestDto, ListCate
 from fastapi import HTTPException
 from app.utils.common import convertStringToHyphen
 from tortoise.transactions import in_transaction
-from app.core.qdrant.qdrant_client import createCollection, createNamespace, deleteCollection
+from app.core.qdrant.qdrant_client import createCollection, createNamespace, deleteCollection, deleteCategory
 
 class ProjectService:
     """Provides CRUD operations for Projects for API v1."""
@@ -104,3 +106,129 @@ class ProjectService:
             return result
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
+        
+    @staticmethod
+    async def handleDeleteProject(projectId: int, user: dict):
+        try:
+            # Validate project exists and belongs to user
+            projectDetail = await ProjectRepository.findOneByClause({
+                "id": projectId, 
+                "userId": user.get("userId")
+            })
+            if not projectDetail:
+                raise HTTPException(status_code=404, detail="Project not found")
+
+            # Get project index details
+            projectIndexDetails = await VectorIndexRepository.findOneByClause({"projectId": projectId})
+            if not projectIndexDetails:
+                raise HTTPException(status_code=404, detail="Project index not found")
+
+            # Get all categories for this project
+            projectCategories = await VectorNamespaceRepository.findAllByClause({"indexId": projectIndexDetails.id})
+            
+            if not projectCategories:
+                # No categories, just delete index and project
+                async with in_transaction():
+                    await VectorIndexRepository.deleteByClause({"id": projectIndexDetails.id})
+                    await ProjectRepository.deleteByClause({"id": projectId})
+                deleteCollection(projectIndexDetails.indexName)
+                return True
+
+            # Collect all IDs for bulk deletion
+            category_ids = [category.id for category in projectCategories]
+            
+            # Get all documents for all categories in one go (if possible with your schema)
+            all_documents = []
+            for category in projectCategories:
+                documents = await DocumentRepository.findAllByClause({"namespaceId": category.id})
+                all_documents.extend(documents)
+            
+            document_ids = [doc.id for doc in all_documents]
+            
+            # Get all chunks for all documents
+            all_chunks = []
+            if document_ids:
+                # Bulk query for all chunks at once (assuming your repo supports this)
+                for doc_id in document_ids:
+                    chunks = await VectorChunkRepository.findAllByClause({"documentId": doc_id})
+                    all_chunks.extend(chunks)
+            
+            chunk_ids = [chunk.id for chunk in all_chunks]
+
+            # Perform all deletions in a single transaction
+            async with in_transaction():
+                # Delete in proper order (children first)
+                if chunk_ids:
+                    await VectorChunkRepository.deleteBulkByIds(chunk_ids)
+                
+                if document_ids:
+                    await DocumentRepository.deleteBulkByIds(document_ids)
+                
+                if category_ids:
+                    await VectorNamespaceRepository.deleteBulkByIds(category_ids)
+                
+                # Delete index and project
+                await VectorIndexRepository.deleteByClause({"id": projectIndexDetails.id})
+                await ProjectRepository.deleteByClause({"id": projectId})
+
+            # Delete external collection (outside transaction)
+            deleteCollection(projectIndexDetails.indexName)
+            
+            return True
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to delete project: {str(e)}")
+
+        
+    @staticmethod
+    async def handleDeleteProjectCategory(projectId: int, categoryId: int, user: dict):
+        try:
+            projectDetail = await ProjectRepository.findOneByClause({
+                "id": projectId, 
+                "userId": user.get("userId")
+            })
+            if not projectDetail:
+                raise HTTPException(status_code=404, detail="Project not found")
+
+            projectIndexDetails = await VectorIndexRepository.findOneByClause({"projectId": projectId})
+            if not projectIndexDetails:
+                raise HTTPException(status_code=404, detail="Project index not found")
+
+            categoryDetail = await VectorNamespaceRepository.findOneByClause({
+                "id": categoryId, 
+                "indexId": projectIndexDetails.id
+            })
+            if not categoryDetail:
+                raise HTTPException(status_code=404, detail="Category not found")
+
+            categoryDocuments = await DocumentRepository.findAllByClause({
+                "namespaceId": categoryId
+            })
+            
+            document_ids = [doc.id for doc in categoryDocuments] if categoryDocuments else []
+
+
+            chunk_ids = []
+            if document_ids:
+                for doc_id in document_ids:
+                    chunks = await VectorChunkRepository.findAllByClause({"documentId": doc_id})
+                    chunk_ids.extend([chunk.id for chunk in chunks] if chunks else [])
+
+            async with in_transaction():
+                if chunk_ids:
+                    await VectorChunkRepository.deleteBulkByIds(chunk_ids)
+                
+                if document_ids:
+                    await DocumentRepository.deleteBulkByIds(document_ids)
+                
+                await VectorNamespaceRepository.deleteByClause({"id": categoryDetail.id})
+            deleteCategory(projectIndexDetails.indexName, categoryDetail.name)
+            
+            return True
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to delete category: {str(e)}")

@@ -1,8 +1,9 @@
 # app/api/v1/chat_service.py
 from fastapi import HTTPException, status
-from app.core.models.pydantic.chat import SearchAndAnswerRequestDto, ChatHistoryResponseDto, SessionClearResponseDto
+from app.core.models.pydantic.chat import SearchAndAnswerRequestDto, ChatHistoryResponseDto, SessionClearResponseDto, UserChatHistoryDto
 from app.core.repository.vector_index_repository import VectorIndexRepository
 from app.core.repository.vector_namespace_repository import VectorNamespaceRepository
+from app.core.repository.chat_repository import ChatRepository
 from app.core.qdrant.qdrant_client import searchChunksOllama
 from app.core.llm.llm import (
     askHuggingFaceLLM, 
@@ -18,7 +19,8 @@ class ChatService:
     @staticmethod
     async def handleSearchAndAnswer(
         request: SearchAndAnswerRequestDto, 
-        use_memory: bool = True
+        use_memory: bool = True,
+        currentUser: Optional[dict] = None
     ) -> dict:
         """Handle search and answer with optional memory."""
         try:
@@ -31,6 +33,17 @@ class ChatService:
                     status_code=status.HTTP_404_NOT_FOUND, 
                     detail="Project index not found"
                 )
+
+            chatDetails = await ChatRepository.findOneByClause({
+                "projectId": request.projectId,
+                "userId": currentUser.get("userId"),
+                "sessionId": request.sessionId
+            })
+
+            if chatDetails and chatDetails.chatHistory:
+                chatHistory = chatDetails.chatHistory.copy()
+            else:
+                chatHistory = []
 
             all_hits = []
 
@@ -63,21 +76,35 @@ class ChatService:
                     )
                     all_hits.extend(results)
 
-            # Transform results
             formatted_hits = [{"fields": hit.payload} for hit in all_hits]
-
-            # Generate session ID if not provided and memory is requested
             session_id = request.sessionId
             if use_memory and not session_id:
                 session_id = str(uuid.uuid4())
 
-            # Choose LLM function based on memory requirement
             if use_memory and session_id:
                 answer, session_id = askHuggingFaceLLMWithMemory(
                     question=request.query,
                     context_chunks=formatted_hits,
                     session_id=session_id
                 )
+                chatHistory.extend([
+                        {"user": request.query},
+                        {"assistant": answer}
+                ])
+
+                if chatDetails:
+                    await ChatRepository.updateByClause(
+                        {"id": chatDetails.id},
+                        chatHistory=chatHistory
+                    )
+                else:
+                    await ChatRepository.create({
+                        "projectId": request.projectId,
+                        "categoryId": request.categoryId,
+                        "userId": currentUser.get("userId"),
+                        "sessionId": session_id if session_id else "",
+                        "chatHistory": chatHistory
+                    })
                 return {
                     "answer": answer,
                     "sessionId": session_id,
@@ -151,3 +178,28 @@ class ChatService:
                 "sessionManagement": True
             }
         }
+    @staticmethod
+    async def getUserChatHistory(currentUser: dict) -> list:
+        """Get all conversation histories for the user."""
+        try:
+            chatDetails = await ChatRepository.findAllByClause(
+                {
+                    "userId": currentUser.get("userId")
+                }
+            )
+            result: list[UserChatHistoryDto] = []
+            for chat in chatDetails:
+                result.append(
+                    UserChatHistoryDto(
+                        ProjectId=chat.projectId,
+                        categoryId=chat.categoryId,
+                        sessionId=chat.sessionId,
+                        chatHistory=chat.chatHistory
+                    )
+                )
+            return result
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
+                detail=f"Internal server error: {str(e)}"
+            )

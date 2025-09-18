@@ -32,6 +32,14 @@ class VectorChunkRepository:
         return await VectorChunk.filter(**whereClause).order_by("id")
 
     @staticmethod
-    async def deleteByClause(whereClause: Dict[str, Any]) -> VectorChunk:
+    async def deleteByClause(whereClause: Dict[str, Any]) -> int:
         logger.info("[v1] Deleting vector chunk by clause: {}", whereClause)
-        return await VectorChunk.delete(**whereClause)
+        # Use filter().delete() instead of Model.delete(**kwargs)
+        return await VectorChunk.filter(**whereClause).delete()
+
+    @staticmethod
+    async def deleteBulkByIds(chunk_ids: List[int]) -> int:
+        logger.info("[v1] Bulk deleting vector chunks by ids: {}", chunk_ids)
+        if not chunk_ids:
+            return 0
+        return await VectorChunk.filter(id__in=chunk_ids).delete()

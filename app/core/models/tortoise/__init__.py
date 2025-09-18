@@ -9,6 +9,7 @@ from .documents import Document, DocumentType
 from .vector_chunks import VectorChunk
 from .users import User
 from .github_tokens import GithubToken
+from .chats import Chat
 
 __all__ = [
     "Project",
@@ -19,4 +20,5 @@ __all__ = [
     "VectorChunk",
     "User",
     "GithubToken",
+    "Chat",
 ]

@@ -318,7 +318,7 @@ def createNamespace(collection_name: str, namespace: str, project_name: str):
             id=namespace_uuid,  # Use UUID instead of string
             vector=response['embeddings'][0],
             payload={
-                "kind": "namespace-placeholder",
+                "kind": "category",
                 "namespace": namespace,
                 "project": project_name,
                 "chunk_text": f"This is a Category namespace for {project_name}.",
@@ -370,4 +370,111 @@ def processCodebaseFolder(root_folder: str, collection_name: str, namespace: str
 
     except Exception as e:
         print(f"Error processing codebase folder: {e}")
+        raise
+
+def deleteCategory(collection_name: str, namespace: str):
+    """
+    Delete category/namespace by removing all points with the specified namespace
+    """
+    try:
+        # Build filter to match the namespace
+        namespace_filter = models.Filter(
+            must=[models.FieldCondition(key="namespace", match=models.MatchValue(value=namespace))]
+        )
+        
+        # Delete all points matching the namespace filter
+        result = qdrant.delete(
+            collection_name=collection_name,
+            points_selector=models.FilterSelector(filter=namespace_filter)
+        )
+        
+        print(f"Successfully deleted all points in namespace '{namespace}' from collection '{collection_name}'")
+        return result
+        
+    except Exception as e:
+        print(f"Error deleting category/namespace '{namespace}' from collection '{collection_name}': {e}")
+        raise
+
+
+def deleteVectorsByIds(collection_name: str, vector_ids: list):
+    """
+    Delete multiple vectors by their UUIDs in batch
+    
+    Args:
+        collection_name: Name of the Qdrant collection
+        vector_ids: List of UUIDs/IDs of vectors to delete
+    """
+    try:
+        if not vector_ids:
+            print("No vector IDs provided for deletion")
+            return True
+        
+        # Convert string UUIDs to proper format if needed
+        processed_ids = []
+        for vid in vector_ids:
+            # Handle both string UUIDs and direct IDs
+            if isinstance(vid, str):
+                # Try to parse as UUID, fallback to string
+                try:
+                    processed_ids.append(vid)
+                except:
+                    processed_ids.append(vid)
+            else:
+                processed_ids.append(vid)
+        
+        # Delete points by IDs
+        result = qdrant.delete(
+            collection_name=collection_name,
+            points_selector=models.PointIdsList(points=processed_ids)
+        )
+        
+        print(f"Successfully deleted {len(processed_ids)} vectors from collection '{collection_name}'")
+        return result
+        
+    except Exception as e:
+        print(f"Error deleting vectors by IDs from collection '{collection_name}': {e}")
+        raise
+
+
+def deleteBatchVectors(collection_name: str, vector_ids: list, batch_size: int = 100):
+    """
+    Delete vectors in batches for better performance with large arrays
+    
+    Args:
+        collection_name: Name of the Qdrant collection  
+        vector_ids: List of UUIDs/IDs of vectors to delete
+        batch_size: Number of vectors to delete per batch (default: 100)
+    """
+    try:
+        if not vector_ids:
+            print("No vector IDs provided for deletion")
+            return True
+        
+        total_ids = len(vector_ids)
+        total_batches = (total_ids + batch_size - 1) // batch_size
+        
+        print(f"Deleting {total_ids} vectors in {total_batches} batches...")
+        
+        for i in range(0, total_ids, batch_size):
+            batch_ids = vector_ids[i:i + batch_size]
+            batch_number = i // batch_size + 1
+            
+            try:
+                # Delete current batch
+                result = qdrant.delete(
+                    collection_name=collection_name,
+                    points_selector=models.PointIdsList(points=batch_ids)
+                )
+                
+                print(f"Deleted batch {batch_number}/{total_batches}: {len(batch_ids)} vectors")
+                
+            except Exception as e:
+                print(f"Error deleting batch {batch_number}: {e}")
+                raise
+        
+        print(f"Successfully deleted all {total_ids} vectors in {total_batches} batches")
+        return True
+        
+    except Exception as e:
+        print(f"Error in batch deletion from collection '{collection_name}': {e}")
         raise

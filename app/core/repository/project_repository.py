@@ -37,6 +37,7 @@ class ProjectRepository:
         return await Project.update(id=id, name=name)
 
     @staticmethod
-    async def delete(id: int) -> Project:
-        logger.info("[v1] Deleting project by id: {}", id)
-        return await Project.delete(id=id)
+    async def deleteByClause(whereClause: Dict[str, Any]) -> int:
+        logger.info("[v1] Deleting project by clause: {}", whereClause)
+        # Use filter().delete() instead of Model.delete(**kwargs)
+        return await Project.filter(**whereClause).delete()

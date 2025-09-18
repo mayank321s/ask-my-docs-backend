@@ -1,8 +1,8 @@
 # app/api/v1/chat.py
 from fastapi import APIRouter, status, Query, Path, Depends
 from .chat_service import ChatService
-from app.core.models.pydantic.chat import SearchAndAnswerRequestDto, ChatHistoryResponseDto, SessionClearResponseDto
-from typing import Optional, Dict
+from app.core.models.pydantic.chat import SearchAndAnswerRequestDto, ChatHistoryResponseDto, SessionClearResponseDto, UserChatHistoryDto
+from typing import Optional, Dict, List
 from app.utils.jwt import get_current_user
 
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -24,7 +24,7 @@ async def search_and_answer(
     - **use_memory**: Enable/disable conversation memory
     - **sessionId**: Optional session ID for memory (auto-generated if not provided)
     """
-    return await ChatService.handleSearchAndAnswer(request, use_memory)
+    return await ChatService.handleSearchAndAnswer(request, use_memory, currentUser)
 
 @router.delete(
     "/session/{session_id}",
@@ -81,4 +81,13 @@ async def clear_session_post(
 )
 async def health_check(currentUser: Dict = Depends(get_current_user)):
     """Health check endpoint."""
-    return ChatService.health_check(currentUser)
+    return ChatService.health_check()
+
+@router.get(
+    "/history",
+     response_model=List[UserChatHistoryDto],
+    status_code=status.HTTP_200_OK,
+    description="Get all conversation histories")
+async def get_all_histories(currentUser: Dict = Depends(get_current_user)):
+    "Get all conversation histories"
+    return await ChatService.getUserChatHistory(currentUser)

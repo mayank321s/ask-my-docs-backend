@@ -32,6 +32,14 @@ class DocumentRepository:
         return await Document.filter(**whereClause).order_by("id")
 
     @staticmethod
-    async def deleteByClause(whereClause: Dict[str, Any]) -> Document:
-        logger.info("[v1] Deleting document by clause: {}", whereClause)
-        return await Document.delete(**whereClause)
+    async def deleteByClause(whereClause: Dict[str, Any]) -> int:
+        logger.info("[v1] Deleting Document by clause: {}", whereClause)
+        # Use filter().delete() instead of Model.delete(**kwargs)
+        return await Document.filter(**whereClause).delete()
+    
+    @staticmethod
+    async def deleteBulkByIds(document_ids: List[int]) -> int:
+        logger.info("[v1] Bulk deleting documents by ids: {}", document_ids)
+        if not document_ids:
+            return 0
+        return await Document.filter(id__in=document_ids).delete()

@@ -15,3 +15,9 @@ class SessionClearResponseDto(BaseModel):
     sessionId: str
     message: str
     success: bool
+
+class UserChatHistoryDto(BaseModel):
+    ProjectId: int
+    categoryId: Optional[int] = None
+    sessionId: Optional[str] = None
+    chatHistory: list    

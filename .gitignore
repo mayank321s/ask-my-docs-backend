@@ -142,3 +142,4 @@ dmypy.json
 
 # Temporary assets for github
 tempAssets
+qdrant_storage

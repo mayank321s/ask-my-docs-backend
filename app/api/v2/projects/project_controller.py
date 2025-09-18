@@ -46,3 +46,19 @@ async def createProjectCategory(projectId: int, request: CreateCategoryRequestDt
 )
 async def listProjectCategories(projectId: int):
     return await ProjectService.handleListProjectCategoriesByProjectId(projectId)
+
+@router.delete(
+    "/{projectId}",
+    status_code=status.HTTP_200_OK,
+    description="Delete a project",
+)
+async def deleteProject(projectId: int, currentUser: Dict = Depends(get_current_user)):
+    return await ProjectService.handleDeleteProject(projectId, currentUser)
+    
+
+@router.delete(
+    "/{projectId}/category/{categoryId}",
+    status_code=status.HTTP_200_OK,
+    description="Delete a project category",)
+async def deleteProjectCategory(projectId: int, categoryId: int, currentUser: Dict = Depends(get_current_user)):
+    return await ProjectService.handleDeleteProjectCategory(projectId, categoryId, currentUser)
