@@ -10,21 +10,15 @@ router = APIRouter(prefix="/github", tags=["github"])
 
 @router.get("/download")
 async def downloadGithubRepository(
-    owner: str = Query(..., description="Repository owner/organization name"),
-    repo: str = Query(..., description="Repository name"),
+    repoUrl: str = Query(..., description="Repository URL"),
     projectId: int = Query(..., description="Project ID"),
-    branchName: str = Query(..., description="Branch name"),
     categoryId: int = Query(..., description="Category ID"),
-    ref: Optional[str] = Query(
-        None,
-        description="Branch, tag, or commit SHA"
-    ),
     currentUser: Dict = Depends(get_current_user)
 ):
-    await GitHubService.downloadRepository(owner, repo, projectId, categoryId, branchName, currentUser, ref)
+    await GitHubService.downloadRepository(repoUrl, projectId, categoryId, currentUser)
     response = {
         "status": "success",
-        "repository": f"{owner}/{repo}",
+        "repository": repoUrl,
     }
     return response
 
@@ -79,5 +73,16 @@ async def getGithubToken(
     response ={
         "status": "success",
         "github_token": token
+    }
+    return response
+
+@router.get("/get-all-repositories")
+async def getAllRepositories(
+    currentUser: Dict = Depends(get_current_user)
+):
+    repositories = await GitHubService.handleGetAllRepositories(currentUser)
+    response = {
+        "status": "success",
+        "repositories": repositories
     }
     return response
