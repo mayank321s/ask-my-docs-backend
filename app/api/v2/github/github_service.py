@@ -696,59 +696,68 @@ class GitHubService:
                 detail=f"An error occurred while fetching repositories: {str(e)}"
             )
 
+    from typing import List, Dict, Optional
+
     @staticmethod
-    async def handleGetAllSyncedRepos(currentUser: Dict, projectId: Optional[int] = None, categoryId: Optional[int] = None, repoName: Optional[str] = None) -> List[Dict]:
+    async def handleGetAllSyncedRepos(
+        currentUser: Dict,
+        projectId: Optional[int] = None,
+        categoryId: Optional[int] = None,
+        repoName: Optional[str] = None
+    ) -> Dict:
         try:
-            clause: Dict = {
-                "userId": currentUser.get("userId")
-            }
+            clause: Dict = {"userId": currentUser.get("userId")}
             if projectId:
                 clause["projectId"] = projectId
             if categoryId:
                 clause["categoryId"] = categoryId
             if repoName:
-                clause["repoName"] = repoName
-                
-            repos = await GithubRepoRepository.findAllByClause(clause) 
-            if not repos:
-                return { "repository": [] }
+                clause["repoName__icontains"] = repoName
 
-            repo_ids = [r["id"] for r in repos]
+            repos = await GithubRepoRepository.findAllByClause(clause)
+            if not repos:
+                return {"repository": []}
+
+            repo_ids = [r.id for r in repos]
 
             branches = await GithubBranchRepository.findAllByClause({"githubRepoId__in": repo_ids})
             pull_requests = await GithubPullRequestRepository.findAllByClause({"githubRepoId__in": repo_ids})
 
             branches_by_repo: Dict[int, List[Dict]] = {}
             for b in branches or []:
-                rid = b["githubRepoId"]
+                rid = b.githubRepoId
                 branches_by_repo.setdefault(rid, []).append({
-                    "branchName": b.get("branchName", ""),
-                    "branchRepoUrl": b.get("branchRepoUrl", "")
+                    "branchName": b.branchName,
+                    "branchRepoUrl": b.branchRepoUrl,
+                    "status": b.status,
                 })
 
             prs_by_repo: Dict[int, List[Dict]] = {}
             for p in pull_requests or []:
-                rid = p["githubRepoId"]
+                rid = p.githubRepoId
                 prs_by_repo.setdefault(rid, []).append({
-                    "prNumber": str(p.get("prNumber", "")),
-                    "prUrl": p.get("prUrl", ""),
-                    "prName": p.get("prName", "")
+                    "prNumber": str(p.prNumber),
+                    "prUrl": p.prUrl,
+                    "prName": p.prName,
+                    "status": p.status,
                 })
 
             repository_payload: List[Dict] = []
             for r in repos:
-                rid = r["id"]
+                rid = r.id
                 repository_payload.append({
-                    "repoName": r.get("repoName", ""),
-                    "repoOwner": r.get("repoOwner", ""),
-                    "repoUrl": r.get("repoUrl", ""),
-                    "projectId": r.get("projectId", 0),
-                    "categoryId": r.get("categoryId", 0),
+                    "repoName": r.repoName,
+                    "repoOwner": r.repoOwner,
+                    "repoUrl": r.repoUrl,
+                    "projectId": r.projectId,
+                    "categoryId": r.categoryId,
+                    "status": r.status,
+                    "createdAt": r.createdAt.isoformat() if hasattr(r, 'createdAt') and r.createdAt else None,
                     "branches": branches_by_repo.get(rid, []),
                     "pullRequest": prs_by_repo.get(rid, [])
                 })
 
-            return { "repository": repository_payload }
+            return {"repository": repository_payload}
 
         except HTTPException:
             raise
@@ -757,5 +766,6 @@ class GitHubService:
                 status_code=500,
                 detail=f"An error occurred while fetching repositories: {str(e)}"
             )
+
 
 
