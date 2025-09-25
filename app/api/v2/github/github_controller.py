@@ -86,3 +86,17 @@ async def getAllRepositories(
         "repositories": repositories
     }
     return response
+
+@router.get("/get-all-synced-repositories")
+async def getAllSyncedRepos(
+    currentUser: Dict = Depends(get_current_user),
+    projectId: Optional[int] = Query(None, description="Project ID"),
+    categoryId: Optional[int] = Query(None, description="Category ID"),
+    repoName: Optional[str] = Query(None, description="Repository name"),
+):
+    repos = await GitHubService.handleGetAllSyncedRepos(currentUser, projectId, categoryId, repoName)
+    response = {
+        "status": "success",
+        "synced_repositories": repos
+    }
+    return response

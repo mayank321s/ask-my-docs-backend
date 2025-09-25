@@ -1,8 +1,7 @@
 from tortoise import Model, fields
 
 
-class Github(Model):
-    """Represents a collection of related indexes and documents."""
+class GithubRepo(Model):
 
     id = fields.IntField(pk=True)
     userId = fields.IntField(
@@ -10,8 +9,8 @@ class Github(Model):
         on_delete=fields.CASCADE
     )
     repoName = fields.CharField(max_length=255)
+    repoOwner = fields.CharField(max_length=255)
     repoUrl = fields.CharField(max_length=255)
-    branchName = fields.CharField(max_length=255)
     projectId = fields.IntField(
         source_field="project_id",
         on_delete=fields.CASCADE
@@ -24,7 +23,7 @@ class Github(Model):
     updatedAt = fields.DatetimeField(auto_now=True, source_field="updated_at")
 
     class Meta:
-        table = "github"
+        table = "github_repo"
 
     def __str__(self) -> str:  # pragma: no cover
         return self.repoName

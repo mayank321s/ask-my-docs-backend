@@ -1,17 +1,19 @@
 import os
 import zipfile
 import requests
-from typing import Optional
+from typing import Optional , Dict, List
 import shutil
 from fastapi import HTTPException
 from urllib.parse import urljoin
 import requests
 import base64
-from typing import Optional
 from app.core.repository.project_repository import ProjectRepository
 from app.core.repository.vector_index_repository import VectorIndexRepository
 from app.core.repository.vector_namespace_repository import VectorNamespaceRepository
 from app.core.repository.github_token_repository import GithubTokenRepository
+from app.core.repository.github_branch_repository import GithubBranchRepository
+from app.core.repository.github_repo_repository import GithubRepoRepository
+from app.core.repository.github_pull_request_repository import GithubPullRequestRepository
 from app.core.qdrant.qdrant_client import ( upsertChunksOllama, processCodebaseFolder )
 from app.core.chunker.chunker import chunkText
 import re
@@ -127,6 +129,23 @@ class GitHubService:
                 # Process the codebase
                 processCodebaseFolder(extracted_top_dir, projectIndexDetails.indexName, 
                                     vectorNamespaceDetails.name, branch)
+                
+            repoDetails = await GithubRepoRepository.findOneByClause({"repoName": repo, "repoOwner": owner, "userId": currentUser.get("userId"), "projectId": projectId, "categoryId": categoryId})
+            if not repoDetails:
+                repoDetails = await GithubRepoRepository.create({
+                    "userId": currentUser.get("userId"),
+                    "repoName": repo,
+                    "repoOwner": owner,
+                    "repoUrl": repo_url,
+                    "projectId": projectId,
+                    "categoryId": categoryId
+            })
+            await GithubBranchRepository.create({
+                "userId": currentUser.get("userId"),
+                "githubRepoId": repoDetails.id,
+                "branchName": branch,
+                "branchRepoUrl": download_url,
+            })
 
             # Cleanup: remove ZIP file and extracted directory
             try:
@@ -194,7 +213,7 @@ class GitHubService:
             vectorNamespaceDetails = await VectorNamespaceRepository.findOneByClause({"id": categoryId})
             if not vectorNamespaceDetails:
                 raise HTTPException(status_code=404, detail="Category not found")
-            
+             
             # Parse PR URL to extract owner, repo, and PR number
             def parse_pr_url(url: str):
                 """Parse GitHub PR URL to extract owner, repo, and PR number"""
@@ -311,6 +330,127 @@ class GitHubService:
         except Exception as e:
             print(f"Error processing PR: {e}")
             return False
+        
+    @staticmethod
+    async def storePrFilesToVectorDb(pr_url: str,indexName: str,namespace: str,currentUser: dict) -> bool:
+        """
+        Fetch all files changed in a PR, chunk them, and store in Pinecone
+        """
+        try:
+             
+            # Parse PR URL to extract owner, repo, and PR number
+            def parse_pr_url(url: str):
+                """Parse GitHub PR URL to extract owner, repo, and PR number"""
+                # Pattern to match GitHub PR URLs
+                patterns = [
+                    # https://github.com/owner/repo/pull/123
+                    r'https://github\.com/([^/]+)/([^/]+)/pull/(\d+)',
+                    # https://github.com/owner/repo/pulls/123
+                    r'https://github\.com/([^/]+)/([^/]+)/pulls/(\d+)'
+                ]
+                
+                for pattern in patterns:
+                    match = re.match(pattern, url.rstrip('/'))
+                    if match:
+                        owner = match.group(1)
+                        repo = match.group(2)
+                        pr_number = int(match.group(3))
+                        return owner, repo, pr_number
+                
+                raise ValueError("Invalid GitHub PR URL format")
+
+            try:
+                owner, repo, prNumber = parse_pr_url(pr_url)
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=f"Invalid PR URL: {str(e)}")
+            
+            async with httpx.AsyncClient() as client:
+                # Fetch PR files
+                filesResponse = await client.get(
+                    f"https://api.github.com/repos/{owner}/{repo}/pulls/{prNumber}/files",
+                    headers=GitHubService.getHeaders(userId=currentUser.get("userId"))
+                )
+                filesResponse.raise_for_status()
+                changedFiles = filesResponse.json()
+                
+                # Fetch PR details
+                prResponse = await client.get(
+                    f"https://api.github.com/repos/{owner}/{repo}/pulls/{prNumber}",
+                    headers=GitHubService.getHeaders(userId=currentUser.get("userId"))
+                )
+                prResponse.raise_for_status()
+                prData = prResponse.json()
+                
+                baseSha = prData["base"]["sha"]
+                headSha = prData["head"]["sha"]
+                
+                baseMetadata = {
+                    "repo": f"{owner or ''}/{repo or ''}",
+                    "pr_number": prNumber or 0,
+                    "pr_title": prData.get("title") or "",
+                    "pr_description": prData.get("body") or "",
+                    "pr_author": prData.get("user", {}).get("login") or "",
+                    "created_at": prData.get("created_at") or "",
+                    "merged_at": prData.get("merged_at") or "",
+                    "date": prData.get("merged_at") or "",
+                    "pr_url": pr_url
+                }
+
+                allChunks = []
+                
+                for file in changedFiles:
+                    filePath = file["filename"]
+                    fileStatus = file["status"]
+                    
+                    fileMetadata = {
+                        **baseMetadata,
+                        "file_path": filePath,
+                        "file_status": fileStatus,
+                        "additions": file["additions"],
+                        "deletions": file["deletions"],
+                        "changes": file["changes"]
+                    }
+                    
+                    if fileStatus != "added":
+                        beforeContent = await GitHubService.fetchFileContentAtRef(owner, repo, filePath, baseSha)
+                        if beforeContent:
+                            beforeMetadata = {
+                                **fileMetadata,
+                                "version_type": "pr_before",
+                                "commit_sha": baseSha
+                            }
+                            
+                            beforeFileName = f"{filePath}_pr{prNumber}_before"
+                            beforeChunks = chunkText(beforeContent, beforeMetadata, beforeFileName)
+                            allChunks.extend(beforeChunks)
+                    
+                    if fileStatus != "removed":
+                        afterContent = await GitHubService.fetchFileContentAtRef(owner, repo, filePath, headSha)
+                        if afterContent:
+                            afterMetadata = {
+                                **fileMetadata,
+                                "version_type": "pr_after",
+                                "commit_sha": headSha
+                            }
+                            
+                            afterFileName = f"{filePath}_pr{prNumber}_after"
+                            afterChunks = chunkText(afterContent, afterMetadata, afterFileName)
+                            allChunks.extend(afterChunks)
+                
+                if allChunks:
+                    upsertChunksOllama(indexName, namespace, allChunks)
+                    print(f"Successfully stored {len(allChunks)} chunks for PR #{prNumber}")
+                    return True
+                else:
+                    print(f"No chunks to store for PR #{prNumber}")
+                    return False
+                    
+        except httpx.HTTPStatusError as e:
+            print(f"HTTP error processing PR: {e}")
+            return False
+        except Exception as e:
+            print(f"Error processing PR: {e}")
+            return False
 
     @staticmethod
     async def fetchAndStoreAllMergedPrs(repo_url: str, projectId: int, categoryId: int, currentUser: dict) -> dict:
@@ -322,6 +462,10 @@ class GitHubService:
             projectDetail = await ProjectRepository.get_by_id(projectId)
             if not projectDetail:
                 raise HTTPException(status_code=404, detail="Project not found")
+            
+            vectorIndexDetails = await VectorIndexRepository.findOneByClause({"projectId": projectDetail.id})
+            if not vectorIndexDetails:
+                raise HTTPException(status_code=404, detail="Vector index not found")
             
             vectorNamespaceDetails = await VectorNamespaceRepository.findOneByClause({"id": categoryId})
             if not vectorNamespaceDetails:
@@ -401,6 +545,10 @@ class GitHubService:
             successful_prs = []
             failed_prs = []
             
+            repoDetails = await GithubRepoRepository.findOneByClause({"repoName": repo, "repoOwner": owner, "userId": currentUser.get("userId"), "projectId": projectId, "categoryId": categoryId})
+            if not repoDetails:
+                raise HTTPException(status_code=404, detail="Repository not found")
+            
             for i, pr in enumerate(all_merged_prs, 1):
                 pr_number = pr["number"]
                 pr_title = pr.get("title", "")
@@ -409,12 +557,20 @@ class GitHubService:
                 print(f"Processing PR #{pr_number} ({i}/{len(all_merged_prs)}): {pr_title}")
                 
                 try:
-                    success = await GitHubService.fetchAndStorePrFiles(
+                    success = await GitHubService.storePrFilesToVectorDb(
                         pr_url=pr_url,
-                        projectId=projectId,
-                        categoryId=categoryId,
+                        indexName=vectorIndexDetails.indexName,
+                        namespace=vectorNamespaceDetails.name,
                         currentUser=currentUser
                     )
+                    
+                    await GithubPullRequestRepository.create({
+                        "userId": currentUser.get("userId"),
+                        "githubRepoId": repoDetails.id,
+                        "prNumber": pr_number,
+                        "prUrl": pr_url,
+                        "prName": pr_title,
+                    })
                     
                     if success:
                         successful_prs.append({
@@ -609,6 +765,66 @@ class GitHubService:
                 detail=f"An error occurred while fetching repositories: {str(e)}"
             )
 
-            
+    @staticmethod
+    async def handleGetAllSyncedRepos(currentUser: Dict, projectId: Optional[int] = None, categoryId: Optional[int] = None, repoName: Optional[str] = None) -> List[Dict]:
+        try:
+            clause: Dict = {
+                "userId": currentUser.get("userId")
+            }
+            if projectId:
+                clause["projectId"] = projectId
+            if categoryId:
+                clause["categoryId"] = categoryId
+            if repoName:
+                clause["repoName"] = repoName
+                
+            repos = await GithubRepoRepository.findAllByClause(clause) 
+            if not repos:
+                return { "repository": [] }
+
+            repo_ids = [r["id"] for r in repos]
+
+            branches = await GithubBranchRepository.findAllByClause({"githubRepoId__in": repo_ids})
+            pull_requests = await GithubPullRequestRepository.findAllByClause({"githubRepoId__in": repo_ids})
+
+            branches_by_repo: Dict[int, List[Dict]] = {}
+            for b in branches or []:
+                rid = b["githubRepoId"]
+                branches_by_repo.setdefault(rid, []).append({
+                    "branchName": b.get("branchName", ""),
+                    "branchRepoUrl": b.get("branchRepoUrl", "")
+                })
+
+            prs_by_repo: Dict[int, List[Dict]] = {}
+            for p in pull_requests or []:
+                rid = p["githubRepoId"]
+                prs_by_repo.setdefault(rid, []).append({
+                    "prNumber": str(p.get("prNumber", "")),
+                    "prUrl": p.get("prUrl", ""),
+                    "prName": p.get("prName", "")
+                })
+
+            repository_payload: List[Dict] = []
+            for r in repos:
+                rid = r["id"]
+                repository_payload.append({
+                    "repoName": r.get("repoName", ""),
+                    "repoOwner": r.get("repoOwner", ""),
+                    "repoUrl": r.get("repoUrl", ""),
+                    "projectId": r.get("projectId", 0),
+                    "categoryId": r.get("categoryId", 0),
+                    "branches": branches_by_repo.get(rid, []),
+                    "pullRequest": prs_by_repo.get(rid, [])
+                })
+
+            return { "repository": repository_payload }
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"An error occurred while fetching repositories: {str(e)}"
+            )
 
 
