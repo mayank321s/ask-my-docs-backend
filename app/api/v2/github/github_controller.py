@@ -24,39 +24,35 @@ async def downloadGithubRepository(
 
 @router.get("/fetch-pr-files")
 async def fetchPrFiles(
-    owner: str = Query(..., description="Repository owner/organization name"),
-    repo: str = Query(..., description="Repository name"),
-    prNumber: int = Query(..., description="Pull request number"),
+    prUrl: int = Query(..., description="Pull request url"),
     projectId: int = Query(..., description="Project ID"),
     categoryId: int = Query(..., description="Category ID"),
     currentUser: Dict = Depends(get_current_user)
 ):
-    await GitHubService.fetchAndStorePrFiles(owner, repo, prNumber, projectId, categoryId, currentUser)
+    await GitHubService.fetchAndStorePrFiles(prUrl, projectId, categoryId, currentUser)
     response = {
         "status": "success",
-        "repository": f"{owner}/{repo}",
-        "pr_number": prNumber,
+        "prUrl": prUrl,
     }
     return response
 
 @router.get("/fetch-all-merged-pr")
 async def fetchAllMergedPr(
-    owner: str = Query(..., description="Repository owner/organization name"),
-    repo: str = Query(..., description="Repository name"),
+    repoUrl: str = Query(..., description="Repository url"),
     projectId: int = Query(..., description="Project ID"),
     categoryId: int = Query(..., description="Category ID"),
     currentUser: Dict = Depends(get_current_user)
 ):
-    await GitHubService.fetchAndStoreAllMergedPrs(owner, repo, projectId, categoryId, currentUser)
+    await GitHubService.fetchAndStoreAllMergedPrs(repoUrl, projectId, categoryId, currentUser)
     response ={
         "status": "success",
-        "repository": f"{owner}/{repo}",
+        "repoUrl": f"{repoUrl}",
     }
     return response
 
 @router.post("/store-github-token")
 async def storeGithubToken(
-    githubToken: int = Query(..., description="GitHub Token"),
+    githubToken: str = Query(..., description="GitHub Token"),
     currentUser: Dict = Depends(get_current_user)
 ):
     await GitHubService.handleStoreGithubToken(githubToken, currentUser)
