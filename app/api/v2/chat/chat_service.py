@@ -24,18 +24,7 @@ class ChatService:
     ) -> dict:
         """Handle search and answer with optional memory."""
         try:
-            # Get project index details
-            projectIndexDetails = await VectorIndexRepository.findOneByClause(
-                {"projectId": request.projectId}
-            )
-            if not projectIndexDetails:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND, 
-                    detail="Project index not found"
-                )
-
             chatDetails = await ChatRepository.findOneByClause({
-                "projectId": request.projectId,
                 "userId": currentUser.get("userId"),
                 "sessionId": request.sessionId
             })
@@ -44,13 +33,25 @@ class ChatService:
                 chatHistory = chatDetails.chatHistory.copy()
             else:
                 chatHistory = []
+            
+            # Get project index details
+            projectId = chatDetails.projectId if request.sessionId else request.projectId
+            categoryId = chatDetails.categoryId if request.sessionId else request.categoryId
+            projectIndexDetails = await VectorIndexRepository.findOneByClause(
+                {"projectId": projectId}
+            )
+            if not projectIndexDetails:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND, 
+                    detail="Project index not found"
+                )
 
             all_hits = []
 
             # Search logic - same as your original
-            if request.categoryId:
+            if categoryId:
                 namespaceDetails = await VectorNamespaceRepository.findOneByClause(
-                    {"id": request.categoryId}
+                    {"id": categoryId}
                 )
                 if not namespaceDetails:
                     raise HTTPException(
@@ -99,8 +100,8 @@ class ChatService:
                     )
                 else:
                     await ChatRepository.create({
-                        "projectId": request.projectId,
-                        "categoryId": request.categoryId,
+                        "projectId": projectId,
+                        "categoryId": categoryId,
                         "userId": currentUser.get("userId"),
                         "sessionId": session_id if session_id else "",
                         "chatHistory": chatHistory
@@ -203,3 +204,32 @@ class ChatService:
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
                 detail=f"Internal server error: {str(e)}"
             )
+
+    @staticmethod
+    async def getUserChatBySessionId(currentUser: dict, session_id: str) -> list:
+        """Get all conversation histories for the user."""
+        try:
+            chatDetails = await ChatRepository.findAllByClause(
+                {
+                    "userId": currentUser.get("userId"),
+                    "sessionId": session_id
+                }
+            )
+            result: list[UserChatHistoryDto] = []
+            for chat in chatDetails:
+                result.append(
+                    UserChatHistoryDto(
+                        ProjectId=chat.projectId,
+                        categoryId=chat.categoryId,
+                        sessionId=chat.sessionId,
+                        chatHistory=chat.chatHistory
+                    )
+                )
+            return result
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
+                detail=f"Internal server error: {str(e)}"
+            )
+
+

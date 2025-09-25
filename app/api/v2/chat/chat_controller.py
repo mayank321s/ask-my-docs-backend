@@ -85,9 +85,18 @@ async def health_check(currentUser: Dict = Depends(get_current_user)):
 
 @router.get(
     "/history",
-     response_model=List[UserChatHistoryDto],
+    response_model=List[UserChatHistoryDto],
     status_code=status.HTTP_200_OK,
     description="Get all conversation histories")
 async def get_all_histories(currentUser: Dict = Depends(get_current_user)):
     "Get all conversation histories"
     return await ChatService.getUserChatHistory(currentUser)
+
+@router.get(
+    "/history/{session_id}",
+    response_model=List[UserChatHistoryDto],
+    status_code=status.HTTP_200_OK,
+    description="Get all conversation histories")
+async def get_all_histories(session_id: str = Path(..., description="Session ID to retrieve history for"), currentUser: Dict = Depends(get_current_user)):
+    "Get all conversation histories"
+    return await ChatService.getUserChatBySessionId(currentUser, session_id)

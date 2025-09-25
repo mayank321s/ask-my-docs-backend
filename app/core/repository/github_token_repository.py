@@ -37,6 +37,22 @@ class GithubTokenRepository:
         return await GithubToken.update(id=id, name=name)
 
     @staticmethod
+    async def updateByClause(whereClause: Dict[str, Any], **kwargs: Dict[str, Any]) -> GithubToken:
+        logger.info("[v1] Updating user by clause: {}", whereClause)
+        # Get the object first
+        githubToken_obj = await GithubToken.get_or_none(**whereClause)
+        if not githubToken_obj:
+            return None
+        
+        # Update the object attributes
+        for key, value in kwargs.items():
+            setattr(githubToken_obj, key, value)
+        
+        # Save the changes
+        await githubToken_obj.save()
+        return githubToken_obj
+
+    @staticmethod
     async def delete(id: int) -> GithubToken:
         logger.info("[v1] Deleting github token by id: {}", id)
         return await GithubToken.delete(id=id)

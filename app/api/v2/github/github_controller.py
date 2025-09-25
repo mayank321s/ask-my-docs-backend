@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Query, Depends
+from fastapi import APIRouter, Query, Depends, BackgroundTasks
 from typing import Optional, Dict
 import os
 
@@ -10,59 +10,55 @@ router = APIRouter(prefix="/github", tags=["github"])
 
 @router.get("/download")
 async def downloadGithubRepository(
-    owner: str = Query(..., description="Repository owner/organization name"),
-    repo: str = Query(..., description="Repository name"),
+    backgroundTasks: BackgroundTasks,
+    repoUrl: str = Query(..., description="Repository URL"),
     projectId: int = Query(..., description="Project ID"),
-    branchName: str = Query(..., description="Branch name"),
     categoryId: int = Query(..., description="Category ID"),
-    ref: Optional[str] = Query(
-        None,
-        description="Branch, tag, or commit SHA"
-    ),
     currentUser: Dict = Depends(get_current_user)
 ):
-    await GitHubService.downloadRepository(owner, repo, projectId, categoryId, branchName, currentUser, ref)
+    await GitHubService.downloadRepository(repoUrl, projectId, categoryId, currentUser, backgroundTasks)
     response = {
         "status": "success",
-        "repository": f"{owner}/{repo}",
+        "repository": repoUrl,
+        "message": "Code is being uploaded, please check back after few minutes."
     }
     return response
 
 @router.get("/fetch-pr-files")
 async def fetchPrFiles(
-    owner: str = Query(..., description="Repository owner/organization name"),
-    repo: str = Query(..., description="Repository name"),
-    prNumber: int = Query(..., description="Pull request number"),
+    backgroundTasks: BackgroundTasks,
+    prUrl: str = Query(..., description="Pull request url"),
     projectId: int = Query(..., description="Project ID"),
     categoryId: int = Query(..., description="Category ID"),
     currentUser: Dict = Depends(get_current_user)
 ):
-    await GitHubService.fetchAndStorePrFiles(owner, repo, prNumber, projectId, categoryId, currentUser)
+    await GitHubService.fetchAndStorePrFiles(prUrl, projectId, categoryId, currentUser, backgroundTasks)
     response = {
         "status": "success",
-        "repository": f"{owner}/{repo}",
-        "pr_number": prNumber,
+        "prUrl": prUrl,
+        "message": "Code pull requests is being uploaded, please check back after few minutes"
     }
     return response
 
 @router.get("/fetch-all-merged-pr")
 async def fetchAllMergedPr(
-    owner: str = Query(..., description="Repository owner/organization name"),
-    repo: str = Query(..., description="Repository name"),
+    backgroundTasks: BackgroundTasks,
+    repoUrl: str = Query(..., description="Repository url"),
     projectId: int = Query(..., description="Project ID"),
     categoryId: int = Query(..., description="Category ID"),
     currentUser: Dict = Depends(get_current_user)
 ):
-    await GitHubService.fetchAndStoreAllMergedPrs(owner, repo, projectId, categoryId, currentUser)
+    await GitHubService.fetchAndStoreAllMergedPrs(repoUrl, projectId, categoryId, currentUser, backgroundTasks)
     response ={
         "status": "success",
-        "repository": f"{owner}/{repo}",
+        "repoUrl": f"{repoUrl}",
+        "message": "All merged pull requests are being uploaded, please check back after few minutes"
     }
     return response
 
 @router.post("/store-github-token")
 async def storeGithubToken(
-    githubToken: int = Query(..., description="GitHub Token"),
+    githubToken: str = Query(..., description="GitHub Token"),
     currentUser: Dict = Depends(get_current_user)
 ):
     await GitHubService.handleStoreGithubToken(githubToken, currentUser)
@@ -79,5 +75,30 @@ async def getGithubToken(
     response ={
         "status": "success",
         "github_token": token
+    }
+    return response
+
+@router.get("/get-all-repositories")
+async def getAllRepositories(
+    currentUser: Dict = Depends(get_current_user)
+):
+    repositories = await GitHubService.handleGetAllRepositories(currentUser)
+    response = {
+        "status": "success",
+        "repositories": repositories
+    }
+    return response
+
+@router.get("/get-all-synced-repositories")
+async def getAllSyncedRepos(
+    currentUser: Dict = Depends(get_current_user),
+    projectId: Optional[int] = Query(None, description="Project ID"),
+    categoryId: Optional[int] = Query(None, description="Category ID"),
+    repoName: Optional[str] = Query(None, description="Repository name"),
+):
+    repos = await GitHubService.handleGetAllSyncedRepos(currentUser, projectId, categoryId, repoName)
+    response = {
+        "status": "success",
+        "synced_repositories": repos
     }
     return response

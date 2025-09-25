@@ -2,7 +2,7 @@ from pydantic import BaseModel
 from typing import Optional
 
 class SearchAndAnswerRequestDto(BaseModel):
-    projectId: int
+    projectId: Optional[int] = None
     query: str
     categoryId: Optional[int] = None
     sessionId: Optional[str] = None 
