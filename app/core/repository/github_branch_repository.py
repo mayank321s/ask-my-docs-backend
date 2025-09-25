@@ -32,9 +32,21 @@ class GithubBranchRepository:
         return await GithubBranch.filter(**whereClause).order_by("id")
 
     @staticmethod
-    async def update(id: int, name: str) -> GithubBranch:
-        logger.info("[v1] Updating github token by id: {}", id)
-        return await GithubBranch.update(id=id, name=name)
+    async def updateByClause(whereClause: Dict[str, Any], **kwargs: Dict[str, Any]) -> GithubBranch:
+        logger.info("[v1] Updating user by clause: {}", whereClause)
+        # Get the object first
+        githubBranch_obj = await GithubBranch.get_or_none(**whereClause)
+        if not githubBranch_obj:
+            return None
+        
+        # Update the object attributes
+        for key, value in kwargs.items():
+            setattr(githubBranch_obj, key, value)
+        
+        # Save the changes
+        await githubBranch_obj.save()
+        return githubBranch_obj
+
 
     @staticmethod
     async def delete(id: int) -> GithubBranch:

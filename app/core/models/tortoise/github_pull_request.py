@@ -18,6 +18,7 @@ class GithubPullRequest(Model):
     )
     prUrl = fields.CharField(max_length=255)
     prName = fields.CharField(max_length=255)
+    status = fields.CharField(max_length=50, default="uploading")
     createdAt = fields.DatetimeField(auto_now_add=True, source_field="created_at")
     updatedAt = fields.DatetimeField(auto_now=True, source_field="updated_at")
 

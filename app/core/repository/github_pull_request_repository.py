@@ -32,9 +32,21 @@ class GithubPullRequestRepository:
         return await GithubPullRequest.filter(**whereClause).order_by("id")
 
     @staticmethod
-    async def update(id: int, name: str) -> GithubPullRequest:
-        logger.info("[v1] Updating github token by id: {}", id)
-        return await GithubPullRequest.update(id=id, name=name)
+    async def updateByClause(whereClause: Dict[str, Any], **kwargs: Dict[str, Any]) -> GithubPullRequest:
+        logger.info("[v1] Updating user by clause: {}", whereClause)
+        # Get the object first
+        githubPullRequest_obj = await GithubPullRequest.get_or_none(**whereClause)
+        if not githubPullRequest_obj:
+            return None
+        
+        # Update the object attributes
+        for key, value in kwargs.items():
+            setattr(githubPullRequest_obj, key, value)
+        
+        # Save the changes
+        await githubPullRequest_obj.save()
+        return githubPullRequest_obj
+
 
     @staticmethod
     async def delete(id: int) -> GithubPullRequest:

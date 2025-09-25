@@ -18,23 +18,66 @@ from app.core.qdrant.qdrant_client import ( upsertChunksOllama, processCodebaseF
 from app.core.chunker.chunker import chunkText
 import re
 import httpx
+from fastapi import BackgroundTasks
+import asyncio
 
 class GitHubService:
     GITHUB_API_BASE = "https://api.github.com"
     ASSETS_DIR = os.path.abspath("tempAssets")
+    tokenDetails = None
 
     @staticmethod
     async def getHeaders(userId) -> dict:
         headers = {
             "Accept": "application/vnd.github+json",
         }
-        tokenDetails = await GithubTokenRepository.findOneByClause({"userId": userId})
+        tokenDetails =  GitHubService.tokenDetails 
+        if tokenDetails is None:
+            tokenDetails = await GithubTokenRepository.findOneByClause({"userId": userId})
         if tokenDetails and tokenDetails.token:
             headers["Authorization"] = f"Bearer {tokenDetails.token}"
+            GitHubService.tokenDetails = tokenDetails
         return headers
+    
+    @staticmethod
+    async def process_downloaded_repo(zip_path: str, extract_dir: str, index_name: str,
+                                    namespace_name: str, branch: str, repo_id: int,
+                                    user_id: str, download_url: str):
+        try:
+            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                if os.path.isdir(extract_dir):
+                    shutil.rmtree(extract_dir)
+                zip_ref.extractall(extract_dir)
+                extractedDirs = os.listdir(extract_dir)
+                extractedTopDir = os.path.join(extract_dir, extractedDirs[0]) if extractedDirs else extract_dir
+                processCodebaseFolder(extractedTopDir, index_name, namespace_name, branch)
+
+            # Do async DB updates naturally
+            await GithubRepoRepository.updateByClause({"id": repo_id}, status="active")
+            await GithubBranchRepository.create({
+                "userId": user_id,
+                "githubRepoId": repo_id,
+                "branchName": branch,
+                "branchRepoUrl": download_url,
+                "status": "active"
+            })
+
+            # Cleanup
+            try:
+                os.remove(zip_path)
+            except OSError:
+                pass
+            try:
+                shutil.rmtree(extract_dir)
+            except OSError:
+                pass
+        except Exception as e:
+            await GithubRepoRepository.updateByClause({"id": repo_id}, status="failed")
+            print(f"Error processing downloaded repo: {e}")
+    
 
     @staticmethod
-    async def downloadRepository(repo_url: str, projectId: int, categoryId: int, currentUser: dict) -> bool:
+    async def downloadRepository(repo_url: str, projectId: int, categoryId: int, currentUser: dict, backgroundTasks: BackgroundTasks) -> dict:
         try:
             projectDetail = await ProjectRepository.get_by_id(projectId)
             if not projectDetail:
@@ -47,23 +90,14 @@ class GitHubService:
             if not os.path.exists(GitHubService.ASSETS_DIR):
                 os.makedirs(GitHubService.ASSETS_DIR)
 
-            # Parse GitHub URL to extract owner, repo, and branch information
+            # Parse GitHub URL function (same as before)
             def parse_github_url(url: str):
-                """Parse GitHub URL to extract owner, repo, and branch"""
-                # Remove trailing slash and .git extension if present
                 url = url.rstrip('/').removesuffix('.git')
-                
-                # Pattern to match GitHub URLs
                 patterns = [
-                    # https://github.com/owner/repo/tree/branch
                     r'https://github\.com/([^/]+)/([^/]+)/tree/(.+)',
-                    # https://github.com/owner/repo/blob/branch/file
                     r'https://github\.com/([^/]+)/([^/]+)/blob/([^/]+)',
-                    # https://github.com/owner/repo
                     r'https://github\.com/([^/]+)/([^/]+)/?$',
-                    # git@github.com:owner/repo.git
                     r'git@github\.com:([^/]+)/([^/]+)',
-                    # git://github.com/owner/repo.git
                     r'git://github\.com/([^/]+)/([^/]+)'
                 ]
                 
@@ -77,57 +111,20 @@ class GitHubService:
                 
                 raise ValueError("Invalid GitHub URL format")
 
-
             try:
                 owner, repo, branch = parse_github_url(repo_url)
             except ValueError as e:
                 raise HTTPException(status_code=400, detail=f"Invalid GitHub URL: {str(e)}")
 
-            # If no branch specified, get the default branch from repository info
-            if not branch:
-                async with httpx.AsyncClient() as client:
-                    repo_info_response = await client.get(
-                        f"https://api.github.com/repos/{owner}/{repo}",
-                        headers= await GitHubService.getHeaders(userId=currentUser.get("userId"))
-                    )
-                    if repo_info_response.status_code == 200:
-                        repo_info = repo_info_response.json()
-                        branch = repo_info.get("default_branch", "main")
-                    else:
-                        branch = "main"  # fallback to main
-
-            # Construct the zipball download URL using GitHub API
-            download_url = f"https://api.github.com/repos/{owner}/{repo}/zipball/{branch}"
-
-            zip_filename = f"{owner}_{repo}_{branch}.zip"
-            zip_path = os.path.join(GitHubService.ASSETS_DIR, zip_filename)
-            extract_dir = os.path.join(GitHubService.ASSETS_DIR, f"{owner}_{repo}_{branch}")
-
-            # Download the repository as ZIP
-            with requests.get(download_url, headers= await GitHubService.getHeaders(userId=currentUser.get("userId")), stream=True) as r:
-                if not r.ok:
-                    raise HTTPException(status_code=404, detail="Repository or branch not found")
-                r.raise_for_status()
-                with open(zip_path, 'wb') as f:
-                    for chunk in r.iter_content(chunk_size=8192):
-                        f.write(chunk)
-
-            # Extract the ZIP file
-            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-                if os.path.isdir(extract_dir):
-                    shutil.rmtree(extract_dir)
-
-                zip_ref.extractall(extract_dir)
-
-                extractedDirs = os.listdir(extract_dir)
-                if extractedDirs:
-                    extractedTopDir = os.path.join(extract_dir, extractedDirs[0])
-                else:
-                    extractedTopDir = extract_dir
-
-                processCodebaseFolder(extractedTopDir,projectIndexDetails.indexName,vectorNamespaceDetails.name, branch)
-                
-            repoDetails = await GithubRepoRepository.findOneByClause({"repoName": repo, "repoOwner": owner, "userId": currentUser.get("userId"), "projectId": projectId, "categoryId": categoryId})
+            # Create repo record
+            repoDetails = await GithubRepoRepository.findOneByClause({
+                "repoName": repo, 
+                "repoOwner": owner, 
+                "userId": currentUser.get("userId"), 
+                "projectId": projectId, 
+                "categoryId": categoryId
+            })
+            
             if not repoDetails:
                 repoDetails = await GithubRepoRepository.create({
                     "userId": currentUser.get("userId"),
@@ -135,39 +132,53 @@ class GitHubService:
                     "repoOwner": owner,
                     "repoUrl": repo_url,
                     "projectId": projectId,
-                    "categoryId": categoryId
-            })
-            await GithubBranchRepository.create({
-                "userId": currentUser.get("userId"),
-                "githubRepoId": repoDetails.id,
-                "branchName": branch,
-                "branchRepoUrl": download_url,
-            })
+                    "categoryId": categoryId,
+                    "status": "uploading"
+                })
 
-            # Cleanup: remove ZIP file and extracted directory
-            try:
-                os.remove(zip_path)
-            except OSError as e:
-                print(f"Warning: Could not delete ZIP file {zip_path}: {e}")
-            
-            try:
-                shutil.rmtree(extract_dir)
-            except OSError as e:
-                print(f"Warning: Could not delete extract directory {extract_dir}: {e}")
-            
-            return True
+            # Get default branch if not specified
+            if not branch:
+                async with httpx.AsyncClient() as client:
+                    repo_info_response = await client.get(
+                        f"https://api.github.com/repos/{owner}/{repo}",
+                        headers=await GitHubService.getHeaders(userId=currentUser.get("userId"))
+                    )
+                    if repo_info_response.status_code == 200:
+                        repo_info = repo_info_response.json()
+                        branch = repo_info.get("default_branch", "main")
+                    else:
+                        branch = "main"
 
-        except httpx.HTTPStatusError as e:
-            raise HTTPException(
-                status_code=e.response.status_code,
-                detail=f"Failed to download repository: {e.response.text}"
+            # Download URLs and paths
+            download_url = f"https://api.github.com/repos/{owner}/{repo}/zipball/{branch}"
+            zip_filename = f"{owner}_{repo}_{branch}.zip"
+            zip_path = os.path.join(GitHubService.ASSETS_DIR, zip_filename)
+            extract_dir = os.path.join(GitHubService.ASSETS_DIR, f"{owner}_{repo}_{branch}")
+
+            # Download the ZIP file
+            with requests.get(download_url, headers=await GitHubService.getHeaders(userId=currentUser.get("userId")), stream=True) as r:
+                if not r.ok:
+                    raise HTTPException(status_code=404, detail="Repository or branch not found")
+                r.raise_for_status()
+                with open(zip_path, 'wb') as f:
+                    for chunk in r.iter_content(chunk_size=8192):
+                        f.write(chunk)
+
+            # ADD BACKGROUND TASK HERE - Run processing in background
+           
+            backgroundTasks.add_task(
+                GitHubService.process_downloaded_repo,
+                zip_path, extract_dir, projectIndexDetails.indexName,
+                vectorNamespaceDetails.name, branch, repoDetails.id,
+                currentUser.get("userId"), download_url
             )
+            
+
+            return {"message": "Code is being uploaded, please check back after few minutes"}
+
         except Exception as e:
-            if os.path.exists(zip_path):
-                try:
-                    os.remove(zip_path)
-                except OSError as oe:
-                    print(f"Warning: Could not delete ZIP file {zip_path}: {oe}")
+            if 'repoDetails' in locals():
+                await GithubRepoRepository.updateByClause({"id": repoDetails.id}, status="failed")
             raise HTTPException(
                 status_code=500,
                 detail=f"An error occurred while processing the repository: {str(e)}"
@@ -203,7 +214,7 @@ class GitHubService:
             return None
 
     @staticmethod
-    async def fetchAndStorePrFiles(pr_url: str, projectId: int, categoryId: int, currentUser: dict) -> bool:
+    async def fetchAndStorePrFiles(pr_url: str, projectId: int, categoryId: int, currentUser: dict, backgroundTasks: BackgroundTasks) -> bool:
         """
         Fetch all files changed in a PR, chunk them, and store in Pinecone
         """
@@ -239,22 +250,16 @@ class GitHubService:
 
             try:
                 owner, repo, prNumber = parse_pr_url(pr_url)
+                githubRepoDetails = await GithubRepoRepository.findOneByClause({"repoName": repo, "repoOwner": owner, "userId": currentUser.get("userId"), "projectId": projectId, "categoryId": categoryId})
+                if not githubRepoDetails:
+                    raise HTTPException(status_code=404, detail="Repository not found")
             except ValueError as e:
                 raise HTTPException(status_code=400, detail=f"Invalid PR URL: {str(e)}")
             
             indexName = projectIndexDetails.indexName
             namespace = vectorNamespaceDetails.name
-            
+  
             async with httpx.AsyncClient() as client:
-                # Fetch PR files
-                filesResponse = await client.get(
-                    f"https://api.github.com/repos/{owner}/{repo}/pulls/{prNumber}/files",
-                    headers= await GitHubService.getHeaders(userId=currentUser.get("userId"))
-                )
-                filesResponse.raise_for_status()
-                changedFiles = filesResponse.json()
-                
-                # Fetch PR details
                 prResponse = await client.get(
                     f"https://api.github.com/repos/{owner}/{repo}/pulls/{prNumber}",
                     headers= await GitHubService.getHeaders(userId=currentUser.get("userId"))
@@ -262,69 +267,17 @@ class GitHubService:
                 prResponse.raise_for_status()
                 prData = prResponse.json()
                 
-                baseSha = prData["base"]["sha"]
-                headSha = prData["head"]["sha"]
-                
-                baseMetadata = {
-                    "repo": f"{owner or ''}/{repo or ''}",
-                    "pr_number": prNumber or 0,
-                    "pr_title": prData.get("title") or "",
-                    "pr_description": prData.get("body") or "",
-                    "pr_author": prData.get("user", {}).get("login") or "",
-                    "created_at": prData.get("created_at") or "",
-                    "merged_at": prData.get("merged_at") or "",
-                    "date": prData.get("merged_at") or "",
-                    "pr_url": pr_url
-                }
-
-                allChunks = []
-                
-                for file in changedFiles:
-                    filePath = file["filename"]
-                    fileStatus = file["status"]
-                    
-                    fileMetadata = {
-                        **baseMetadata,
-                        "file_path": filePath,
-                        "file_status": fileStatus,
-                        "additions": file["additions"],
-                        "deletions": file["deletions"],
-                        "changes": file["changes"]
-                    }
-                    
-                    if fileStatus != "added":
-                        beforeContent = await GitHubService.fetchFileContentAtRef(owner, repo, filePath, baseSha)
-                        if beforeContent:
-                            beforeMetadata = {
-                                **fileMetadata,
-                                "version_type": "pr_before",
-                                "commit_sha": baseSha
-                            }
-                            
-                            beforeFileName = f"{filePath}_pr{prNumber}_before"
-                            beforeChunks = chunkText(beforeContent, beforeMetadata, beforeFileName)
-                            allChunks.extend(beforeChunks)
-                    
-                    if fileStatus != "removed":
-                        afterContent = await GitHubService.fetchFileContentAtRef(owner, repo, filePath, headSha)
-                        if afterContent:
-                            afterMetadata = {
-                                **fileMetadata,
-                                "version_type": "pr_after",
-                                "commit_sha": headSha
-                            }
-                            
-                            afterFileName = f"{filePath}_pr{prNumber}_after"
-                            afterChunks = chunkText(afterContent, afterMetadata, afterFileName)
-                            allChunks.extend(afterChunks)
-                
-                if allChunks:
-                    upsertChunksOllama(indexName, namespace, allChunks)
-                    print(f"Successfully stored {len(allChunks)} chunks for PR #{prNumber}")
-                    return True
-                else:
-                    print(f"No chunks to store for PR #{prNumber}")
-                    return False
+                pr_title = prData.get("title") or ""
+            backgroundTasks.add_task(
+                GitHubService.storePrFilesToVectorDb,
+                        prUrl=pr_url,
+                        indexName=indexName,
+                        namespace=namespace,
+                        currentUser=currentUser,
+                        githubRepoId=githubRepoDetails.id,
+                        prNumber=prNumber,
+                        prName=pr_title,
+            )
                     
         except httpx.HTTPStatusError as e:
             print(f"HTTP error processing PR: {e}")
@@ -334,12 +287,44 @@ class GitHubService:
             return False
         
     @staticmethod
-    async def storePrFilesToVectorDb(pr_url: str,indexName: str,namespace: str,currentUser: dict) -> bool:
+    async def fetchAndStorePrFilesInBackground(indexName: str,namespace: str,currentUser: dict, githubRepoId: str, mergedPrs: list) -> bool:
+        try:
+            for i, pr in enumerate(mergedPrs, 1):
+                pr_number = pr["number"]
+                pr_title = pr.get("title", "")
+                pr_url = pr["html_url"]
+                
+                print(f"Processing PR #{pr_number} ({i}/{len(mergedPrs)}): {pr_title}")
+             
+                await GitHubService.storePrFilesToVectorDb(
+                    prUrl=pr_url,
+                    indexName=indexName,
+                    namespace=namespace,
+                    currentUser=currentUser,
+                    githubRepoId=githubRepoId,
+                    prNumber=pr_number,
+                    prName=pr_title,
+                )
+            return True  
+        except Exception as e:
+            print(f"Error processing PRs: {e}")
+            return False
+        
+    @staticmethod
+    async def storePrFilesToVectorDb(prUrl: str,indexName: str,namespace: str,currentUser: dict, githubRepoId: str, prNumber: int, prName: str) -> bool:
         """
         Fetch all files changed in a PR, chunk them, and store in Pinecone
         """
         try:
-             
+            githubPrDetails = await GithubPullRequestRepository.create({
+                "userId": currentUser.get("userId"),
+                "githubRepoId": githubRepoId,
+                "prNumber": prNumber,
+                "prUrl": prUrl,
+                "prName": prName,
+                "status": "uploading"
+            })
+                
             # Parse PR URL to extract owner, repo, and PR number
             def parse_pr_url(url: str):
                 """Parse GitHub PR URL to extract owner, repo, and PR number"""
@@ -362,7 +347,7 @@ class GitHubService:
                 raise ValueError("Invalid GitHub PR URL format")
 
             try:
-                owner, repo, prNumber = parse_pr_url(pr_url)
+                owner, repo, prNumber = parse_pr_url(prUrl)
             except ValueError as e:
                 raise HTTPException(status_code=400, detail=f"Invalid PR URL: {str(e)}")
             
@@ -395,7 +380,7 @@ class GitHubService:
                     "created_at": prData.get("created_at") or "",
                     "merged_at": prData.get("merged_at") or "",
                     "date": prData.get("merged_at") or "",
-                    "pr_url": pr_url
+                    "pr_url": prUrl
                 }
 
                 allChunks = []
@@ -414,7 +399,7 @@ class GitHubService:
                     }
                     
                     if fileStatus != "added":
-                        beforeContent = await GitHubService.fetchFileContentAtRef(owner, repo, filePath, baseSha)
+                        beforeContent = await GitHubService.fetchFileContentAtRef(owner, repo, filePath, baseSha, currentUser)
                         if beforeContent:
                             beforeMetadata = {
                                 **fileMetadata,
@@ -427,7 +412,7 @@ class GitHubService:
                             allChunks.extend(beforeChunks)
                     
                     if fileStatus != "removed":
-                        afterContent = await GitHubService.fetchFileContentAtRef(owner, repo, filePath, headSha)
+                        afterContent = await GitHubService.fetchFileContentAtRef(owner, repo, filePath, headSha, currentUser)
                         if afterContent:
                             afterMetadata = {
                                 **fileMetadata,
@@ -442,20 +427,22 @@ class GitHubService:
                 if allChunks:
                     upsertChunksOllama(indexName, namespace, allChunks)
                     print(f"Successfully stored {len(allChunks)} chunks for PR #{prNumber}")
-                    return True
                 else:
                     print(f"No chunks to store for PR #{prNumber}")
-                    return False
+            
+            await GithubPullRequestRepository.updateByClause({"id": githubPrDetails.id},status="active")
+            return True
                     
         except httpx.HTTPStatusError as e:
             print(f"HTTP error processing PR: {e}")
             return False
         except Exception as e:
+            await GithubPullRequestRepository.updateByClause({"id": githubPrDetails.id},status="failed")
             print(f"Error processing PR: {e}")
             return False
 
     @staticmethod
-    async def fetchAndStoreAllMergedPrs(repo_url: str, projectId: int, categoryId: int, currentUser: dict) -> dict:
+    async def fetchAndStoreAllMergedPrs(repo_url: str, projectId: int, categoryId: int, currentUser: dict, backgroundTasks: BackgroundTasks) -> dict:
         """
         Fetch all merged PRs from a repository and store each one in the vector database
         """
@@ -543,82 +530,24 @@ class GitHubService:
 
             print(f"Found {len(all_merged_prs)} merged PRs in {owner}/{repo}")
 
-            # Process each merged PR
-            successful_prs = []
-            failed_prs = []
-            
             repoDetails = await GithubRepoRepository.findOneByClause({"repoName": repo, "repoOwner": owner, "userId": currentUser.get("userId"), "projectId": projectId, "categoryId": categoryId})
             if not repoDetails:
                 raise HTTPException(status_code=404, detail="Repository not found")
             
-            for i, pr in enumerate(all_merged_prs, 1):
-                pr_number = pr["number"]
-                pr_title = pr.get("title", "")
-                pr_url = pr["html_url"]  # Use the actual PR URL from API response
+            
+            backgroundTasks.add_task(
+                GitHubService.fetchAndStorePrFilesInBackground,
+                indexName=vectorIndexDetails.indexName,
+                namespace=vectorNamespaceDetails.name,
+                currentUser=currentUser,
+                githubRepoId=repoDetails.id,
+                mergedPrs=all_merged_prs,
+            )
                 
-                print(f"Processing PR #{pr_number} ({i}/{len(all_merged_prs)}): {pr_title}")
                 
-                try:
-                    success = await GitHubService.storePrFilesToVectorDb(
-                        pr_url=pr_url,
-                        indexName=vectorIndexDetails.indexName,
-                        namespace=vectorNamespaceDetails.name,
-                        currentUser=currentUser
-                    )
-                    
-                    await GithubPullRequestRepository.create({
-                        "userId": currentUser.get("userId"),
-                        "githubRepoId": repoDetails.id,
-                        "prNumber": pr_number,
-                        "prUrl": pr_url,
-                        "prName": pr_title,
-                    })
-                    
-                    if success:
-                        successful_prs.append({
-                            "pr_number": pr_number,
-                            "title": pr_title,
-                            "merged_at": pr.get("merged_at"),
-                            "pr_url": pr_url
-                        })
-                        print(f"✅ Successfully processed PR #{pr_number}")
-                    else:
-                        failed_prs.append({
-                            "pr_number": pr_number,
-                            "title": pr_title,
-                            "error": "No chunks generated",
-                            "pr_url": pr_url
-                        })
-                        print(f"⚠️  PR #{pr_number} processed but no chunks generated")
-                        
-                except Exception as e:
-                    failed_prs.append({
-                        "pr_number": pr_number,
-                        "title": pr_title,
-                        "error": str(e),
-                        "pr_url": pr_url
-                    })
-                    print(f"❌ Failed to process PR #{pr_number}: {e}")
-                    continue  # Continue with next PR even if one fails
 
-            # Return summary
-            result = {
-                "repository": f"{owner}/{repo}",
-                "repo_url": repo_url,
-                "total_merged_prs": len(all_merged_prs),
-                "successful_prs": len(successful_prs),
-                "failed_prs": len(failed_prs),
-                "successful_pr_details": successful_prs,
-                "failed_pr_details": failed_prs
-            }
             
-            print(f"\n📊 Processing Summary:")
-            print(f"Repository: {owner}/{repo}")
-            print(f"Total merged PRs found: {result['total_merged_prs']}")
-            print(f"Successfully processed: {result['successful_prs']}")
-            print(f"Failed to process: {result['failed_prs']}")
-            
-            return result
+            return {"message": "Code pull requests is being uploaded, please check back after few minutes"}
 
         except httpx.HTTPStatusError as e:
             raise HTTPException(

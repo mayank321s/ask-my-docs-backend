@@ -32,9 +32,21 @@ class GithubRepoRepository:
         return await GithubRepo.filter(**whereClause).order_by("id")
 
     @staticmethod
-    async def update(id: int, name: str) -> GithubRepo:
-        logger.info("[v1] Updating github token by id: {}", id)
-        return await GithubRepo.update(id=id, name=name)
+    async def updateByClause(whereClause: Dict[str, Any], **kwargs: Dict[str, Any]) -> GithubRepo:
+        logger.info("[v1] Updating user by clause: {}", whereClause)
+        # Get the object first
+        githubRepo_obj = await GithubRepo.get_or_none(**whereClause)
+        if not githubRepo_obj:
+            return None
+        
+        # Update the object attributes
+        for key, value in kwargs.items():
+            setattr(githubRepo_obj, key, value)
+        
+        # Save the changes
+        await githubRepo_obj.save()
+        return githubRepo_obj
+
 
     @staticmethod
     async def delete(id: int) -> GithubRepo:

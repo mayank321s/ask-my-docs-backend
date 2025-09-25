@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Query, Depends
+from fastapi import APIRouter, Query, Depends, BackgroundTasks
 from typing import Optional, Dict
 import os
 
@@ -10,43 +10,49 @@ router = APIRouter(prefix="/github", tags=["github"])
 
 @router.get("/download")
 async def downloadGithubRepository(
+    backgroundTasks: BackgroundTasks,
     repoUrl: str = Query(..., description="Repository URL"),
     projectId: int = Query(..., description="Project ID"),
     categoryId: int = Query(..., description="Category ID"),
     currentUser: Dict = Depends(get_current_user)
 ):
-    await GitHubService.downloadRepository(repoUrl, projectId, categoryId, currentUser)
+    await GitHubService.downloadRepository(repoUrl, projectId, categoryId, currentUser, backgroundTasks)
     response = {
         "status": "success",
         "repository": repoUrl,
+        "message": "Code is being uploaded, please check back after few minutes."
     }
     return response
 
 @router.get("/fetch-pr-files")
 async def fetchPrFiles(
-    prUrl: int = Query(..., description="Pull request url"),
+    backgroundTasks: BackgroundTasks,
+    prUrl: str = Query(..., description="Pull request url"),
     projectId: int = Query(..., description="Project ID"),
     categoryId: int = Query(..., description="Category ID"),
     currentUser: Dict = Depends(get_current_user)
 ):
-    await GitHubService.fetchAndStorePrFiles(prUrl, projectId, categoryId, currentUser)
+    await GitHubService.fetchAndStorePrFiles(prUrl, projectId, categoryId, currentUser, backgroundTasks)
     response = {
         "status": "success",
         "prUrl": prUrl,
+        "message": "Code pull requests is being uploaded, please check back after few minutes"
     }
     return response
 
 @router.get("/fetch-all-merged-pr")
 async def fetchAllMergedPr(
+    backgroundTasks: BackgroundTasks,
     repoUrl: str = Query(..., description="Repository url"),
     projectId: int = Query(..., description="Project ID"),
     categoryId: int = Query(..., description="Category ID"),
     currentUser: Dict = Depends(get_current_user)
 ):
-    await GitHubService.fetchAndStoreAllMergedPrs(repoUrl, projectId, categoryId, currentUser)
+    await GitHubService.fetchAndStoreAllMergedPrs(repoUrl, projectId, categoryId, currentUser, backgroundTasks)
     response ={
         "status": "success",
         "repoUrl": f"{repoUrl}",
+        "message": "All merged pull requests are being uploaded, please check back after few minutes"
     }
     return response
 
