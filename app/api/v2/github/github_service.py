@@ -51,7 +51,7 @@ class GitHubService:
             def parse_github_url(url: str):
                 """Parse GitHub URL to extract owner, repo, and branch"""
                 # Remove trailing slash and .git extension if present
-                url = url.rstrip('/').rstrip('.git')
+                url = url.rstrip('/').removesuffix('.git')
                 
                 # Pattern to match GitHub URLs
                 patterns = [
@@ -77,6 +77,7 @@ class GitHubService:
                 
                 raise ValueError("Invalid GitHub URL format")
 
+
             try:
                 owner, repo, branch = parse_github_url(repo_url)
             except ValueError as e:
@@ -87,7 +88,7 @@ class GitHubService:
                 async with httpx.AsyncClient() as client:
                     repo_info_response = await client.get(
                         f"https://api.github.com/repos/{owner}/{repo}",
-                        headers=GitHubService.getHeaders(userId=currentUser.get("userId"))
+                        headers= await GitHubService.getHeaders(userId=currentUser.get("userId"))
                     )
                     if repo_info_response.status_code == 200:
                         repo_info = repo_info_response.json()
@@ -103,14 +104,13 @@ class GitHubService:
             extract_dir = os.path.join(GitHubService.ASSETS_DIR, f"{owner}_{repo}_{branch}")
 
             # Download the repository as ZIP
-            async with httpx.AsyncClient() as client:
-                async with client.stream('GET', download_url, 
-                                    headers=GitHubService.getHeaders(userId=currentUser.get("userId"))) as response:
-                    response.raise_for_status()
-                    
-                    with open(zip_path, 'wb') as f:
-                        async for chunk in response.aiter_bytes(chunk_size=8192):
-                            f.write(chunk)
+            with requests.get(download_url, headers= await GitHubService.getHeaders(userId=currentUser.get("userId")), stream=True) as r:
+                if not r.ok:
+                    raise HTTPException(status_code=404, detail="Repository or branch not found")
+                r.raise_for_status()
+                with open(zip_path, 'wb') as f:
+                    for chunk in r.iter_content(chunk_size=8192):
+                        f.write(chunk)
 
             # Extract the ZIP file
             with zipfile.ZipFile(zip_path, 'r') as zip_ref:
@@ -119,16 +119,13 @@ class GitHubService:
 
                 zip_ref.extractall(extract_dir)
 
-                # GitHub zipballs create a top-level directory with format owner-repo-commit
-                extracted_dirs = os.listdir(extract_dir)
-                if extracted_dirs:
-                    extracted_top_dir = os.path.join(extract_dir, extracted_dirs[0])
+                extractedDirs = os.listdir(extract_dir)
+                if extractedDirs:
+                    extractedTopDir = os.path.join(extract_dir, extractedDirs[0])
                 else:
-                    extracted_top_dir = extract_dir
+                    extractedTopDir = extract_dir
 
-                # Process the codebase
-                processCodebaseFolder(extracted_top_dir, projectIndexDetails.indexName, 
-                                    vectorNamespaceDetails.name, branch)
+                processCodebaseFolder(extractedTopDir,projectIndexDetails.indexName,vectorNamespaceDetails.name, branch)
                 
             repoDetails = await GithubRepoRepository.findOneByClause({"repoName": repo, "repoOwner": owner, "userId": currentUser.get("userId"), "projectId": projectId, "categoryId": categoryId})
             if not repoDetails:
@@ -166,6 +163,11 @@ class GitHubService:
                 detail=f"Failed to download repository: {e.response.text}"
             )
         except Exception as e:
+            if os.path.exists(zip_path):
+                try:
+                    os.remove(zip_path)
+                except OSError as oe:
+                    print(f"Warning: Could not delete ZIP file {zip_path}: {oe}")
             raise HTTPException(
                 status_code=500,
                 detail=f"An error occurred while processing the repository: {str(e)}"
@@ -182,7 +184,7 @@ class GitHubService:
             
             response = requests.get(
                 urljoin(GitHubService.GITHUB_API_BASE, url),
-                headers=GitHubService.getHeaders(userId=currentUser.get("userId")),
+                headers= await GitHubService.getHeaders(userId=currentUser.get("userId")),
                 params=params
             )
             response.raise_for_status()
@@ -247,7 +249,7 @@ class GitHubService:
                 # Fetch PR files
                 filesResponse = await client.get(
                     f"https://api.github.com/repos/{owner}/{repo}/pulls/{prNumber}/files",
-                    headers=GitHubService.getHeaders(userId=currentUser.get("userId"))
+                    headers= await GitHubService.getHeaders(userId=currentUser.get("userId"))
                 )
                 filesResponse.raise_for_status()
                 changedFiles = filesResponse.json()
@@ -255,7 +257,7 @@ class GitHubService:
                 # Fetch PR details
                 prResponse = await client.get(
                     f"https://api.github.com/repos/{owner}/{repo}/pulls/{prNumber}",
-                    headers=GitHubService.getHeaders(userId=currentUser.get("userId"))
+                    headers= await GitHubService.getHeaders(userId=currentUser.get("userId"))
                 )
                 prResponse.raise_for_status()
                 prData = prResponse.json()
@@ -368,7 +370,7 @@ class GitHubService:
                 # Fetch PR files
                 filesResponse = await client.get(
                     f"https://api.github.com/repos/{owner}/{repo}/pulls/{prNumber}/files",
-                    headers=GitHubService.getHeaders(userId=currentUser.get("userId"))
+                    headers=await GitHubService.getHeaders(userId=currentUser.get("userId"))
                 )
                 filesResponse.raise_for_status()
                 changedFiles = filesResponse.json()
@@ -376,7 +378,7 @@ class GitHubService:
                 # Fetch PR details
                 prResponse = await client.get(
                     f"https://api.github.com/repos/{owner}/{repo}/pulls/{prNumber}",
-                    headers=GitHubService.getHeaders(userId=currentUser.get("userId"))
+                    headers=await GitHubService.getHeaders(userId=currentUser.get("userId"))
                 )
                 prResponse.raise_for_status()
                 prData = prResponse.json()
@@ -522,7 +524,7 @@ class GitHubService:
                     
                     response = await client.get(
                         f"https://api.github.com/repos/{owner}/{repo}/pulls",
-                        headers=GitHubService.getHeaders(userId=currentUser.get("userId")),
+                        headers= await GitHubService.getHeaders(userId=currentUser.get("userId")),
                         params=params
                     )
                     response.raise_for_status()
