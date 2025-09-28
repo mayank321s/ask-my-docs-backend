@@ -9,9 +9,9 @@ class HuggingFaceLLMWrapper(LLM):
     """Custom LangChain wrapper for HuggingFace LLM"""
     
     # Properly declare as a Pydantic field
-    model_name: str = Field(default="deepseek-ai/DeepSeek-V3.1-Terminus", description="HuggingFace model name")
+    model_name: str = Field(default="openai/gpt-oss-20b", description="HuggingFace model name")
     
-    def __init__(self, model_name: str = "deepseek-ai/DeepSeek-V3.1-Terminus", **kwargs):
+    def __init__(self, model_name: str = "openai/gpt-oss-20b", **kwargs):
         super().__init__(model_name=model_name, **kwargs)
     
     def _call(
