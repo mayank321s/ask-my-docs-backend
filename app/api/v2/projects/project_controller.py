@@ -1,7 +1,8 @@
 """API v1 controller for Projects."""
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 from fastapi import APIRouter, status, Depends
+from fastapi.params import Param, Query
 
 from app.core.models.pydantic.projects import CreateProjectRequestDto, ListProjectDto
 from app.core.models.pydantic.category import CreateCategoryRequestDto, ListCategoryDto
@@ -62,3 +63,17 @@ async def deleteProject(projectId: int, currentUser: Dict = Depends(get_current_
     description="Delete a project category",)
 async def deleteProjectCategory(projectId: int, categoryId: int, currentUser: Dict = Depends(get_current_user)):
     return await ProjectService.handleDeleteProjectCategory(projectId, categoryId, currentUser)
+
+@router.get("/{categoryId}/get-all-synced-data")
+async def getAllSyncedRepos(
+    categoryId: int,
+    currentUser: Dict = Depends(get_current_user),
+    projectId: Optional[int] = Query(None, description="Project ID"),
+    repoName: Optional[str] = Query(None, description="Repository name"),
+):
+    result = await ProjectService.handleGetAllSyncedDataInCategory(currentUser, projectId, categoryId, repoName)
+    response = {
+        "status": "success",
+        "data": result
+    }
+    return response
