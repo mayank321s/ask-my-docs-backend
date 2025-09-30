@@ -1,5 +1,6 @@
 # app/api/v1/chat_service.py
 from fastapi import HTTPException, status
+from pypika_tortoise.enums import Order
 from app.core.models.pydantic.chat import SearchAndAnswerRequestDto, ChatHistoryResponseDto, SessionClearResponseDto, UserChatHistoryDto
 from app.core.repository.vector_index_repository import VectorIndexRepository
 from app.core.repository.vector_namespace_repository import VectorNamespaceRepository
@@ -13,6 +14,7 @@ from app.core.llm.llm import (
 )
 from app.core.llm.memory_utils import get_all_sessions, get_session_message_count
 from typing import Optional
+from app.utils.common import getPaginationResponse
 import uuid
 
 class ChatService:
@@ -180,13 +182,23 @@ class ChatService:
             }
         }
     @staticmethod
-    async def getUserChatHistory(currentUser: dict) -> list:
+    async def getUserChatHistory(currentUser: dict, page: int, limit: int) -> dict:
         """Get all conversation histories for the user."""
         try:
+            if not limit:
+                limit =  10
+
+            if not page:
+                page = 1
+            
+            offset = (page -1 ) * limit
             chatDetails = await ChatRepository.findAllByClause(
                 {
                     "userId": currentUser.get("userId")
-                }
+                },
+                offset=offset,
+                limit=limit,
+                order=Order.desc("createdAt")
             )
             result: list[UserChatHistoryDto] = []
             for chat in chatDetails:
@@ -198,7 +210,10 @@ class ChatService:
                         chatHistory=chat.chatHistory
                     )
                 )
-            return result
+            return {
+                "total": getPaginationResponse(chatDetails.count, page, limit, len(chatDetails)),
+                "data": result
+            }
         except Exception as e:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
