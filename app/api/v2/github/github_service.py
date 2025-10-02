@@ -124,7 +124,7 @@ class GitHubService:
             })
             
             if repoDetails and repoDetails.repoName != repo:
-                raise HTTPException(status_code=400, detail="A different repository is already linked to this category. Please choose another category.")
+                raise HTTPException(status_code=400, detail="A different repository is already linked to this category. Please select another category.")
             
             repoDetails = await GithubRepoRepository.findOneByClause({
                 "repoName": repo, 
