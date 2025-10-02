@@ -228,22 +228,21 @@ class ChatService:
     async def getUserChatBySessionId(currentUser: dict, session_id: str) -> list:
         """Get all conversation histories for the user."""
         try:
-            chatDetails = await ChatRepository.findAllByClause(
+            chatDetails = await ChatRepository.findOneByClause(
                 {
                     "userId": currentUser.get("userId"),
                     "sessionId": session_id
                 }
             )
             result: list[UserChatHistoryDto] = []
-            for chat in chatDetails:
-                result.append(
-                    UserChatHistoryDto(
-                        ProjectId=chat.projectId,
-                        categoryId=chat.categoryId,
-                        sessionId=chat.sessionId,
-                        chatHistory=chat.chatHistory
-                    )
+            result.append(
+                UserChatHistoryDto(
+                    ProjectId=chatDetails.projectId,
+                    categoryId=chatDetails.categoryId,
+                    sessionId=chatDetails.sessionId,
+                    chatHistory=chatDetails.chatHistory
                 )
+            )
             return result
         except Exception as e:
             raise HTTPException(
