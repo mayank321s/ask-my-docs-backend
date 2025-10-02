@@ -184,36 +184,40 @@ class ChatService:
     @staticmethod
     async def getUserChatHistory(currentUser: dict, page: int, limit: int) -> dict:
         """Get all conversation histories for the user."""
-        try:
-            if not limit:
-                limit =  10
-
-            if not page:
-                page = 1
-            
+        try: 
             offset = (page -1 ) * limit
-            chatDetails = await ChatRepository.findAllByClause(
+            chatDetails, totalCount = await ChatRepository.findAllByClause(
                 {
                     "userId": currentUser.get("userId")
                 },
                 offset=offset,
                 limit=limit,
-                order=Order.desc("createdAt")
             )
             result: list[UserChatHistoryDto] = []
             for chat in chatDetails:
+                chatTitle = None
+                # Find the first user message in chatHistory
+                for message in chat.chatHistory:
+                    if "user" in message and isinstance(message["user"], str):
+                        # Take first 5 words of the user message as chatTitle
+                        chatTitle = " ".join(message["user"].split()[:5])
+                        break
+
                 result.append(
                     UserChatHistoryDto(
                         ProjectId=chat.projectId,
                         categoryId=chat.categoryId,
                         sessionId=chat.sessionId,
+                        chatTitle=chatTitle,
                         chatHistory=chat.chatHistory
                     )
                 )
+
             return {
-                "total": getPaginationResponse(chatDetails.count, page, limit, len(chatDetails)),
-                "data": result
-            }
+                "data": result,
+                "pagination": getPaginationResponse(totalCount, page, limit, len(chatDetails)),
+            
+        }
         except Exception as e:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 

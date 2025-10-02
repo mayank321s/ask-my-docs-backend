@@ -1,4 +1,4 @@
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Tuple
 from loguru import logger
 
 from app.core.models.tortoise import Chat  
@@ -27,9 +27,27 @@ class ChatRepository:
         return await Chat.get_or_none(**whereClause)
     
     @staticmethod
-    async def findAllByClause(whereClause: Dict[str, Any]) -> List[Chat]:
-        logger.info("[v1] Fetching users by clause: {}", whereClause)
-        return await Chat.filter(**whereClause).order_by("id")
+    async def findAllByClause(
+        whereClause: Dict[str, Any],
+        offset: int = 0,
+        limit: int = 10
+    ) -> Tuple[List[Chat], int]:
+        """
+        Fetch chats by clause with pagination support.
+        Returns tuple of (chats_list, total_count)
+        """
+        logger.info("[v1] Fetching chats by clause: {}", whereClause)
+        
+        # Get total count before applying pagination
+        totalCount = await Chat.filter(**whereClause).count()
+        
+        # Fetch paginated results ordered by createdAt descending (latest first)
+        chats = await Chat.filter(**whereClause)\
+            .order_by("-updatedAt")\
+            .offset(offset)\
+            .limit(limit)
+        
+        return chats, totalCount
 
     @staticmethod
     async def updateByClause(whereClause: Dict[str, Any], **kwargs: Dict[str, Any]) -> Chat:

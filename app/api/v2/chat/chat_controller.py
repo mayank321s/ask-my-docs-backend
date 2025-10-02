@@ -1,7 +1,7 @@
 # app/api/v1/chat.py
 from fastapi import APIRouter, status, Query, Path, Depends
 from .chat_service import ChatService
-from app.core.models.pydantic.chat import SearchAndAnswerRequestDto, ChatHistoryResponseDto, SessionClearResponseDto, UserChatHistoryDto
+from app.core.models.pydantic.chat import SearchAndAnswerRequestDto, ChatHistoryResponseDto, SessionClearResponseDto, UserChatHistoryDto, UserChatHistoryResponseDto
 from typing import Optional, Dict, List
 from app.utils.jwt import get_current_user
 
@@ -85,12 +85,16 @@ async def health_check(currentUser: Dict = Depends(get_current_user)):
 
 @router.get(
     "/history",
-    response_model=List[UserChatHistoryDto],
+    response_model=UserChatHistoryResponseDto,
     status_code=status.HTTP_200_OK,
     description="Get all conversation histories")
-async def get_all_histories(currentUser: Dict = Depends(get_current_user)):
+async def get_all_histories(
+    currentUser: Dict = Depends(get_current_user),
+    page: Optional[int] = Query(1, description="Page number for pagination"),
+    limit: Optional[int] = Query(10, description="Number of items per page")
+    ):
     "Get all conversation histories"
-    return await ChatService.getUserChatHistory(currentUser)
+    return await ChatService.getUserChatHistory(currentUser, page, limit)
 
 @router.get(
     "/history/{session_id}",
