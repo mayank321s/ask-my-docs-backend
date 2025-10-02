@@ -215,7 +215,7 @@ class ChatService:
 
             return {
                 "data": result,
-                "pagination": getPaginationResponse(totalCount, page, limit, len(chatDetails)),
+                "pagination": getPaginationResponse(totalCount, limit, page, len(chatDetails)),
             
         }
         except Exception as e:
