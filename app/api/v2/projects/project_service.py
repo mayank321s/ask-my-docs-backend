@@ -14,7 +14,7 @@ from app.core.models.pydantic.projects import CreateProjectRequestDto, ListProje
 from app.core.repository.vector_namespace_repository import VectorNamespaceRepository
 from app.core.models.pydantic.category import CreateCategoryRequestDto, ListCategoryDto
 from fastapi import HTTPException
-from app.utils.common import convertStringToHyphen
+from app.utils.common import convertStringToHyphen, getPaginationResponse
 from tortoise.transactions import in_transaction
 from app.core.qdrant.qdrant_client import createCollection, createNamespace, deleteCollection, deleteCategory
 
@@ -43,13 +43,20 @@ class ProjectService:
             raise HTTPException(status_code=500, detail=str(e))
         
     @staticmethod
-    async def handleListAllProjects(user: dict):
+    async def handleListAllProjects(user: dict, page: int, limit: int)-> dict:
         """Return all projects with their associated vector index name."""
         try:
+            offset = (page -1 ) * limit
             if user.get("roleCode") == "user":
-                projects_details = await ProjectRepository.findAllByClause({"userId": user.get("userId")})
+                projects_details, totalCount = await ProjectRepository.findAllByClause(
+                    {
+                    "userId": user.get("userId")
+                    },
+                    offset=offset,
+                    limit=limit,
+                )
             else:
-                projects_details = await ProjectRepository.list_all()
+                projects_details, totalCount = await ProjectRepository.list_all()
             result: list[ListProjectDto] = []
             for project in projects_details:
                 indexDetails = await VectorIndexRepository.findOneByClause({"projectId": project.id})
@@ -64,7 +71,10 @@ class ProjectService:
                         updatedAt=project.updatedAt,
                     )
                 )
-            return result
+            
+            return {"data": result, 
+                    "pagination": getPaginationResponse(totalCount, limit, page, len(projects_details)),
+                    }
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 

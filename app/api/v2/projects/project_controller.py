@@ -4,7 +4,7 @@ from typing import List, Dict, Optional
 from fastapi import APIRouter, status, Depends
 from fastapi.params import Param, Query
 
-from app.core.models.pydantic.projects import CreateProjectRequestDto, ListProjectDto
+from app.core.models.pydantic.projects import CreateProjectRequestDto, ListProjectDto, ListProjectsResponseDto
 from app.core.models.pydantic.category import CreateCategoryRequestDto, ListCategoryDto
 from app.utils.jwt import get_current_user
 from .project_service import ProjectService
@@ -24,11 +24,13 @@ async def createProject(request: CreateProjectRequestDto, currentUser: Dict = De
 
 @router.get(
     "/",
-    response_model=List[ListProjectDto],
+    response_model=ListProjectsResponseDto,
     description="Get all projects",
 )
-async def listProjects(currentUser: Dict = Depends(get_current_user)):
-    return await ProjectService.handleListAllProjects(currentUser)
+async def listProjects(currentUser: Dict = Depends(get_current_user),
+    page: Optional[int] = Query(1, description="Page number for pagination"),
+    limit: Optional[int] = Query(10, description="Number of items per page")):
+    return await ProjectService.handleListAllProjects(currentUser, page, limit)
 
 
 @router.post(

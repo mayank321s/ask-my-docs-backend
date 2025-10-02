@@ -2,6 +2,8 @@
 from datetime import datetime
 from pydantic import BaseModel, Field
 
+from app.core.models.pydantic.pagination import PaginationResponseDto
+
 
 class CreateProjectRequestDto(BaseModel):
     """Schema for creating a new project."""
@@ -27,3 +29,9 @@ class ListProjectDto(BaseModel):
     class Config:
         orm_mode = True
 
+
+class ListProjectsResponseDto(BaseModel):
+    """Schema for listing multiple projects."""
+    data: list[ListProjectDto]
+    pagination: PaginationResponseDto  
+    

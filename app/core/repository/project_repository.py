@@ -1,4 +1,4 @@
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Tuple
 from loguru import logger
 
 from app.core.models.tortoise import Project
@@ -27,9 +27,27 @@ class ProjectRepository:
         return await Project.get_or_none(**whereClause)
     
     @staticmethod
-    async def findAllByClause(whereClause: Dict[str, Any]) -> List[Project]:
+    async def findAllByClause(
+        whereClause: Dict[str, Any],
+        offset: int = 0,
+        limit: int = 10
+    ) -> Tuple[List[Project], int]:
+        """
+        Fetch projects by clause with pagination support.
+        Returns tuple of (projects_list, total_count)
+        """
         logger.info("[v1] Fetching projects by clause: {}", whereClause)
-        return await Project.filter(**whereClause).order_by("id")
+        
+        # Get total count before applying pagination
+        totalCount = await Project.filter(**whereClause).count()
+        
+        # Fetch paginated results ordered by createdAt descending (latest first)
+        projects = await Project.filter(**whereClause)\
+            .order_by("-createdAt")\
+            .offset(offset)\
+            .limit(limit)
+        
+        return projects, totalCount
 
     @staticmethod
     async def update(id: int, name: str) -> Project:
