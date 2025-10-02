@@ -118,6 +118,15 @@ class GitHubService:
 
             # Create repo record
             repoDetails = await GithubRepoRepository.findOneByClause({
+                "userId": currentUser.get("userId"), 
+                "projectId": projectId, 
+                "categoryId": categoryId
+            })
+            
+            if repoDetails and repoDetails.repoName != repo:
+                raise HTTPException(status_code=400, detail="A different repository is already linked to this category. Please choose another category.")
+            
+            repoDetails = await GithubRepoRepository.findOneByClause({
                 "repoName": repo, 
                 "repoOwner": owner, 
                 "userId": currentUser.get("userId"), 
@@ -181,7 +190,7 @@ class GitHubService:
                 await GithubRepoRepository.updateByClause({"id": repoDetails.id}, status="failed")
             raise HTTPException(
                 status_code=500,
-                detail=f"An error occurred while processing the repository: {str(e)}"
+                detail=f"{str(e)}"
             )
 
     @staticmethod

@@ -24,7 +24,9 @@ class GithubRepoRepository:
     @staticmethod
     async def findOneByClause(whereClause: Dict[str, Any]) -> GithubRepo:
         logger.info("[v1] Fetching github token by clause: {}", whereClause)
-        return await GithubRepo.get_or_none(**whereClause)
+        # Instead of get_or_none, use filter and fetch first matching record
+        return await GithubRepo.filter(**whereClause).first()
+
     
     @staticmethod
     async def findAllByClause(whereClause: Dict[str, Any]) -> List[GithubRepo]:
