@@ -189,7 +189,7 @@ class GitHubService:
             if 'repoDetails' in locals():
                 await GithubRepoRepository.updateByClause({"id": repoDetails.id}, status="failed")
             raise HTTPException(
-                status_code=500,
+                status_code=e.status_code if e.status_code else 500,
                 detail=f"{str(e)}"
             )
 
