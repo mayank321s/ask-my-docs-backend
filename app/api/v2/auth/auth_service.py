@@ -45,8 +45,8 @@ class AuthService:
             raise
         except Exception as e:
             raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
-                detail=str(e)
+                status_code=e.status_code if e.status_code else 500,
+                detail=f"{str(e)}"
             )
         
     @staticmethod
@@ -83,6 +83,6 @@ class AuthService:
             }
         except Exception as e:
             raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
-                detail=str(e)
+                status_code=e.status_code if e.status_code else 500,
+                detail=f"{str(e)}"
             )
