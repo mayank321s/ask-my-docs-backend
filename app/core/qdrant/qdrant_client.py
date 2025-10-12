@@ -7,7 +7,7 @@ from app.core.chunker.chunker import chunkText  # your existing chunker
 import uuid
 
 # Initialize Qdrant client
-qdrant = QdrantClient(url="http://localhost:6333")  # adjust host/port as needed
+qdrant = QdrantClient(url="http://152.67.163.210:6333")  # adjust host/port as needed
 
 def upsert_chunks(collection_name, namespace, chunks, batch_size=50):
     """

@@ -10,7 +10,7 @@ class AuthService:
     @staticmethod
     async def handleLogin(request: LoginRequestDto):
         try:
-            user = await UserRepository.findOneByClause({"emailAddress": request.emailAddress})
+            user = await UserRepository.findOneByClause({"emailAddress": request.emailAddress.lower()})
             if not user:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND, 
@@ -41,8 +41,6 @@ class AuthService:
                 "githubToken": True if githubToken else False
             }
             
-        except HTTPException:
-            raise
         except Exception as e:
             raise HTTPException(
                 status_code=e.status_code if e.status_code else 500,
@@ -52,7 +50,7 @@ class AuthService:
     @staticmethod
     async def handleRegister(request: RegisterRequestDto):
         try:
-            existing_user = await UserRepository.findOneByClause({"emailAddress": request.emailAddress})
+            existing_user = await UserRepository.findOneByClause({"emailAddress": request.emailAddress.lower()})
             if existing_user:
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT, 
@@ -64,7 +62,7 @@ class AuthService:
             userDataToCreate = {
                 "firstName": request.firstName,
                 "lastName": request.lastName,
-                "emailAddress": request.emailAddress,
+                "emailAddress": request.emailAddress.lower(),
                 "password": hashed_password,
                 "roleCode": "user"
             }
@@ -79,7 +77,6 @@ class AuthService:
             
             return {
                 "message": "Registration successful",
-                "accessToken": accessToken,
             }
         except Exception as e:
             raise HTTPException(

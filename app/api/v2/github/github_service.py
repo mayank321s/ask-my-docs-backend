@@ -20,6 +20,8 @@ import re
 import httpx
 from fastapi import BackgroundTasks
 import asyncio
+from starlette.concurrency import run_in_threadpool
+from functools import partial
 
 class GitHubService:
     GITHUB_API_BASE = "https://api.github.com"
@@ -38,21 +40,25 @@ class GitHubService:
             headers["Authorization"] = f"Bearer {tokenDetails.token}"
             GitHubService.tokenDetails = tokenDetails
         return headers
-    
+
+
+
     @staticmethod
     async def process_downloaded_repo(zip_path: str, extract_dir: str, index_name: str,
                                     namespace_name: str, branch: str, repo_id: int,
                                     user_id: str, download_url: str):
+        """Keep as async def - runs in main event loop, can access DB connections"""
         try:
-            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-                if os.path.isdir(extract_dir):
-                    shutil.rmtree(extract_dir)
-                zip_ref.extractall(extract_dir)
-                extractedDirs = os.listdir(extract_dir)
-                extractedTopDir = os.path.join(extract_dir, extractedDirs[0]) if extractedDirs else extract_dir
-                processCodebaseFolder(extractedTopDir, index_name, namespace_name, branch)
+            loop = asyncio.get_running_loop()
+            
+            # Run blocking file operations in thread pool
+            await loop.run_in_executor(
+                None,  # Uses default ThreadPoolExecutor
+                GitHubService._extract_and_process_files,
+                zip_path, extract_dir, index_name, namespace_name, branch
+            )
 
-            # Do async DB updates naturally
+            # NOW async DB operations work fine - same event loop!
             await GithubRepoRepository.updateByClause({"id": repo_id}, status="active")
             await GithubBranchRepository.create({
                 "userId": user_id,
@@ -62,19 +68,44 @@ class GitHubService:
                 "status": "active"
             })
 
-            # Cleanup
-            try:
-                os.remove(zip_path)
-            except OSError:
-                pass
-            try:
-                shutil.rmtree(extract_dir)
-            except OSError:
-                pass
+            # Cleanup files in thread pool
+            await loop.run_in_executor(
+                None,
+                GitHubService._cleanup_files,
+                zip_path, extract_dir
+            )
+            
         except Exception as e:
             await GithubRepoRepository.updateByClause({"id": repo_id}, status="failed")
             print(f"Error processing downloaded repo: {e}")
-    
+
+    @staticmethod
+    def _extract_and_process_files(zip_path: str, extract_dir: str, 
+                                index_name: str, namespace_name: str, branch: str):
+        """Synchronous helper - contains ALL blocking file operations"""
+        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+            if os.path.isdir(extract_dir):
+                shutil.rmtree(extract_dir)
+            zip_ref.extractall(extract_dir)
+            
+        extractedDirs = os.listdir(extract_dir)
+        extractedTopDir = os.path.join(extract_dir, extractedDirs[0]) if extractedDirs else extract_dir
+        
+        # This blocking function runs in thread pool
+        processCodebaseFolder(extractedTopDir, index_name, namespace_name, branch)
+
+    @staticmethod
+    def _cleanup_files(zip_path: str, extract_dir: str):
+        """Synchronous cleanup helper"""
+        try:
+            os.remove(zip_path)
+        except OSError:
+            pass
+        try:
+            shutil.rmtree(extract_dir)
+        except OSError:
+            pass
+
 
     @staticmethod
     async def downloadRepository(repo_url: str, projectId: int, categoryId: int, currentUser: dict, backgroundTasks: BackgroundTasks) -> dict:
@@ -195,32 +226,32 @@ class GitHubService:
 
     @staticmethod
     async def fetchFileContentAtRef(owner: str, repo: str, filePath: str, ref: str, currentUser: dict) -> Optional[str]:
-        """
-        Fetch file content at a specific commit/ref
-        """
+        """Fetch file content with no timeout"""
         try:
-            url = f"repos/{owner}/{repo}/contents/{filePath}"
+            url = f"https://api.github.com/repos/{owner}/{repo}/contents/{filePath}"
             params = {"ref": ref}
             
-            response = requests.get(
-                urljoin(GitHubService.GITHUB_API_BASE, url),
-                headers= await GitHubService.getHeaders(userId=currentUser.get("userId")),
-                params=params
-            )
-            response.raise_for_status()
-            
-            fileData = response.json()
-            
-            # Decode base64 content
-            if fileData.get("encoding") == "base64":
-                content = base64.b64decode(fileData["content"]).decode('utf-8')
-                return content
-            else:
-                return fileData.get("content", "")
+            # No timeout - will wait indefinitely
+            async with httpx.AsyncClient(timeout=None) as client:
+                response = await client.get(
+                    url,
+                    headers=await GitHubService.getHeaders(userId=currentUser.get("userId")),
+                    params=params
+                )
+                response.raise_for_status()
                 
-        except requests.exceptions.RequestException as e:
+                fileData = response.json()
+                
+                if fileData.get("encoding") == "base64":
+                    content = base64.b64decode(fileData["content"]).decode('utf-8')
+                    return content
+                else:
+                    return fileData.get("content", "")
+                    
+        except httpx.HTTPStatusError as e:
             print(f"Error fetching file {filePath} at ref {ref}: {e}")
             return None
+
 
     @staticmethod
     async def fetchAndStorePrFiles(pr_url: str, projectId: int, categoryId: int, currentUser: dict, backgroundTasks: BackgroundTasks) -> bool:
@@ -290,13 +321,18 @@ class GitHubService:
                     
         except httpx.HTTPStatusError as e:
             print(f"HTTP error processing PR: {e}")
-            return False
-        except Exception as e:
-            print(f"Error processing PR: {e}")
-            return False
+            raise HTTPException(
+                status_code=e.status_code if e.status_code else 500,
+                detail=f"{str(e)}"
+            )
         
     @staticmethod
-    async def fetchAndStorePrFilesInBackground(indexName: str,namespace: str,currentUser: dict, githubRepoId: str, mergedPrs: list) -> bool:
+    async def fetchAndStorePrFilesInBackground(indexName: str, namespace: str, 
+                                            currentUser: dict, githubRepoId: str, 
+                                            mergedPrs: list) -> bool:
+        """
+        Process multiple PRs in background - stays as async def
+        """
         try:
             for i, pr in enumerate(mergedPrs, 1):
                 pr_number = pr["number"]
@@ -304,7 +340,7 @@ class GitHubService:
                 pr_url = pr["html_url"]
                 
                 print(f"Processing PR #{pr_number} ({i}/{len(mergedPrs)}): {pr_title}")
-             
+            
                 await GitHubService.storePrFilesToVectorDb(
                     prUrl=pr_url,
                     indexName=indexName,
@@ -316,13 +352,17 @@ class GitHubService:
                 )
             return True  
         except Exception as e:
-            print(f"Error processing PRs: {e}")
-            return False
-        
+            raise HTTPException(
+                status_code=e.status_code if e.status_code else 500,
+                detail=f"{str(e)}"
+            )
+
     @staticmethod
-    async def storePrFilesToVectorDb(prUrl: str,indexName: str,namespace: str,currentUser: dict, githubRepoId: str, prNumber: int, prName: str) -> bool:
+    async def storePrFilesToVectorDb(prUrl: str, indexName: str, namespace: str, 
+                                    currentUser: dict, githubRepoId: str, 
+                                    prNumber: int, prName: str) -> bool:
         """
-        Fetch all files changed in a PR, chunk them, and store in Pinecone
+        Fetch all files changed in a PR, chunk them, and store in vector DB
         """
         try:
             githubPrDetails = await GithubPullRequestRepository.create({
@@ -336,12 +376,8 @@ class GitHubService:
                 
             # Parse PR URL to extract owner, repo, and PR number
             def parse_pr_url(url: str):
-                """Parse GitHub PR URL to extract owner, repo, and PR number"""
-                # Pattern to match GitHub PR URLs
                 patterns = [
-                    # https://github.com/owner/repo/pull/123
                     r'https://github\.com/([^/]+)/([^/]+)/pull/(\d+)',
-                    # https://github.com/owner/repo/pulls/123
                     r'https://github\.com/([^/]+)/([^/]+)/pulls/(\d+)'
                 ]
                 
@@ -360,7 +396,7 @@ class GitHubService:
             except ValueError as e:
                 raise HTTPException(status_code=400, detail=f"Invalid PR URL: {str(e)}")
             
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(timeout=60.0) as client:
                 # Fetch PR files
                 filesResponse = await client.get(
                     f"https://api.github.com/repos/{owner}/{repo}/pulls/{prNumber}/files",
@@ -408,7 +444,9 @@ class GitHubService:
                     }
                     
                     if fileStatus != "added":
-                        beforeContent = await GitHubService.fetchFileContentAtRef(owner, repo, filePath, baseSha, currentUser)
+                        beforeContent = await GitHubService.fetchFileContentAtRef(
+                            owner, repo, filePath, baseSha, currentUser
+                        )
                         if beforeContent:
                             beforeMetadata = {
                                 **fileMetadata,
@@ -417,11 +455,22 @@ class GitHubService:
                             }
                             
                             beforeFileName = f"{filePath}_pr{prNumber}_before"
-                            beforeChunks = chunkText(beforeContent, beforeMetadata, beforeFileName)
+                            
+                            # CHANGED: Run CPU-intensive chunking in thread pool
+                            loop = asyncio.get_running_loop()
+                            beforeChunks = await loop.run_in_executor(
+                                None,
+                                chunkText,
+                                beforeContent,
+                                beforeMetadata,
+                                beforeFileName
+                            )
                             allChunks.extend(beforeChunks)
                     
                     if fileStatus != "removed":
-                        afterContent = await GitHubService.fetchFileContentAtRef(owner, repo, filePath, headSha, currentUser)
+                        afterContent = await GitHubService.fetchFileContentAtRef(
+                            owner, repo, filePath, headSha, currentUser
+                        )
                         if afterContent:
                             afterMetadata = {
                                 **fileMetadata,
@@ -430,23 +479,51 @@ class GitHubService:
                             }
                             
                             afterFileName = f"{filePath}_pr{prNumber}_after"
-                            afterChunks = chunkText(afterContent, afterMetadata, afterFileName)
+                            
+                            # CHANGED: Run CPU-intensive chunking in thread pool
+                            loop = asyncio.get_running_loop()
+                            afterChunks = await loop.run_in_executor(
+                                None,
+                                chunkText,
+                                afterContent,
+                                afterMetadata,
+                                afterFileName
+                            )
                             allChunks.extend(afterChunks)
                 
                 if allChunks:
-                    upsertChunksOllama(indexName, namespace, allChunks)
+                    # CHANGED: Run blocking vector DB upsert in thread pool
+                    loop = asyncio.get_running_loop()
+                    await loop.run_in_executor(
+                        None,
+                        upsertChunksOllama,
+                        indexName,
+                        namespace,
+                        allChunks
+                    )
                     print(f"Successfully stored {len(allChunks)} chunks for PR #{prNumber}")
                 else:
                     print(f"No chunks to store for PR #{prNumber}")
             
-            await GithubPullRequestRepository.updateByClause({"id": githubPrDetails.id},status="active")
+            await GithubPullRequestRepository.updateByClause(
+                {"id": githubPrDetails.id}, 
+                status="active"
+            )
             return True
                     
         except httpx.HTTPStatusError as e:
             print(f"HTTP error processing PR: {e}")
+            await GithubPullRequestRepository.updateByClause(
+                {"id": githubPrDetails.id}, 
+                status="failed"
+            )
             return False
         except Exception as e:
-            await GithubPullRequestRepository.updateByClause({"id": githubPrDetails.id},status="failed")
+            if 'githubPrDetails' in locals():
+                await GithubPullRequestRepository.updateByClause(
+                    {"id": githubPrDetails.id}, 
+                    status="failed"
+                )
             print(f"Error processing PR: {e}")
             return False
 
