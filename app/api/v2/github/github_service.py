@@ -384,7 +384,7 @@ class GitHubService:
                 "prNumber": prNumber,
                 "prUrl": prUrl,
                 "prName": prName,
-                "status": "active"
+                "status": "uploading"
             })
                 
             # Parse PR URL to extract owner, repo, and PR number
