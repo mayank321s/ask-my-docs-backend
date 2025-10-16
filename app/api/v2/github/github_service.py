@@ -39,7 +39,10 @@ class GitHubService:
         if tokenDetails and tokenDetails.token:
             headers["Authorization"] = f"Bearer {tokenDetails.token}"
             GitHubService.tokenDetails = tokenDetails
+        else:
+            headers["Authorization"] = "Bearer " + os.getenv("GITHUB_TOKEN")
         return headers
+
 
 
 
@@ -338,6 +341,16 @@ class GitHubService:
                 pr_number = pr["number"]
                 pr_title = pr.get("title", "")
                 pr_url = pr["html_url"]
+
+                githubPrDetails = await GithubPullRequestRepository.findOneByClause({
+                "userId": currentUser.get("userId"),
+                "githubRepoId": githubRepoId,
+                "prNumber": pr_number,
+                "prUrl": pr_url,
+                "prName": pr_title,
+                })
+                if githubPrDetails:
+                    continue
                 
                 print(f"Processing PR #{pr_number} ({i}/{len(mergedPrs)}): {pr_title}")
             
@@ -371,7 +384,7 @@ class GitHubService:
                 "prNumber": prNumber,
                 "prUrl": prUrl,
                 "prName": prName,
-                "status": "uploading"
+                "status": "active"
             })
                 
             # Parse PR URL to extract owner, repo, and PR number
