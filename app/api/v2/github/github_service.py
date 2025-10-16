@@ -113,6 +113,7 @@ class GitHubService:
     @staticmethod
     async def downloadRepository(repo_url: str, projectId: int, categoryId: int, currentUser: dict, backgroundTasks: BackgroundTasks) -> dict:
         try:
+            repoAllreadyExist = False
             projectDetail = await ProjectRepository.get_by_id(projectId)
             if not projectDetail:
                 raise HTTPException(status_code=404, detail="Project not found")
@@ -158,6 +159,7 @@ class GitHubService:
             })
             
             if repoDetails and repoDetails.repoName != repo:
+                repoAllreadyExist = True
                 raise HTTPException(status_code=400, detail="A different repository is already linked to this category. Please select another category.")
             
             repoDetails = await GithubRepoRepository.findOneByClause({
@@ -220,7 +222,7 @@ class GitHubService:
             return {"message": "Code is being uploaded, please check back after few minutes"}
 
         except Exception as e:
-            if 'repoDetails' in locals():
+            if 'repoDetails' in locals() and repoAllreadyExist == False:
                 await GithubRepoRepository.updateByClause({"id": repoDetails.id}, status="failed")
             raise HTTPException(
                 status_code=e.status_code if e.status_code else 500,
