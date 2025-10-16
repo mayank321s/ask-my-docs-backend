@@ -341,16 +341,6 @@ class GitHubService:
                 pr_number = pr["number"]
                 pr_title = pr.get("title", "")
                 pr_url = pr["html_url"]
-
-                githubPrDetails = await GithubPullRequestRepository.findOneByClause({
-                "userId": currentUser.get("userId"),
-                "githubRepoId": githubRepoId,
-                "prNumber": pr_number,
-                "prUrl": pr_url,
-                "prName": pr_title,
-                })
-                if githubPrDetails:
-                    continue
                 
                 print(f"Processing PR #{pr_number} ({i}/{len(mergedPrs)}): {pr_title}")
             
@@ -378,6 +368,16 @@ class GitHubService:
         Fetch all files changed in a PR, chunk them, and store in vector DB
         """
         try:
+            githubPrDetails = await GithubPullRequestRepository.findOneByClause({
+                "userId": currentUser.get("userId"),
+                "githubRepoId": githubRepoId,
+                "prNumber": prNumber,
+                "prUrl": prUrl,
+                "prName": prName,
+                })
+            if githubPrDetails:
+                return True
+                
             githubPrDetails = await GithubPullRequestRepository.create({
                 "userId": currentUser.get("userId"),
                 "githubRepoId": githubRepoId,
