@@ -672,7 +672,7 @@ class GitHubService:
                 })
                 return {"status": "success", "message": "GitHub token stored successfully"}
             else:
-                await GithubTokenRepository.update(tokenDetails.id, githubToken)
+                await GithubTokenRepository.updateByClause({"userId": currentUser.get("userId")}, token=githubToken)
                 return {"status": "success", "message": "GitHub token updated successfully"}
             
         except Exception as e:
