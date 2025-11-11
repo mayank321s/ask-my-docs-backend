@@ -7,8 +7,11 @@ from app.core.chunker.chunker import chunkText  # your existing chunker
 import uuid
 
 # Initialize Qdrant client
-qdrant = QdrantClient(url="https://e3f5b5a7-871e-401d-8e20-edb3e28ca23d.eu-west-2-0.aws.cloud.qdrant.io:6333")
-qdrantAPIKey = os.getenv("QDRANT_API_KEY")
+qdrant = QdrantClient(
+    url="https://e3f5b5a7-871e-401d-8e20-edb3e28ca23d.eu-west-2-0.aws.cloud.qdrant.io:6333",
+    api_key=os.getenv("QDRANT_API_KEY"),
+)
+
 
 def upsert_chunks(collection_name, namespace, chunks, batch_size=50):
     """
