@@ -27,7 +27,7 @@ class ListProjectDto(BaseModel):
     updatedAt: datetime
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 class ListProjectsResponseDto(BaseModel):
