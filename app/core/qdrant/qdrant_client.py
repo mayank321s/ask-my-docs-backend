@@ -208,9 +208,32 @@ def list_namespaces(collection_name: str) -> list[str]:
         print(f"Error listing namespaces for collection {collection_name}: {str(e)}")
         raise
 
+# def createCollection(collection_name: str, dimension: int = 768):
+#     """
+#     Create Qdrant collection (equivalent to Pinecone index)
+#     """
+#     try:
+#         existing_collections = qdrant.get_collections()
+#         if any(col.name == collection_name for col in existing_collections.collections):
+#             print(f"Collection {collection_name} already exists")
+#             return
+        
+#         qdrant.create_collection(
+#             collection_name=collection_name,
+#             vectors_config=models.VectorParams(
+#                 size=dimension,
+#                 distance=models.Distance.COSINE
+#             )
+#         )
+#         print(f"Created collection: {collection_name}")
+        
+#     except Exception as e:
+#         print(f"Error creating collection {collection_name}: {e}")
+#         raise
+
 def createCollection(collection_name: str, dimension: int = 768):
     """
-    Create Qdrant collection (equivalent to Pinecone index)
+    Create Qdrant collection optimized for namespace-based multitenancy
     """
     try:
         existing_collections = qdrant.get_collections()
@@ -227,9 +250,22 @@ def createCollection(collection_name: str, dimension: int = 768):
         )
         print(f"Created collection: {collection_name}")
         
+        # Optimize for namespace-based filtering (multitenancy)
+        qdrant.create_payload_index(
+            collection_name=collection_name,
+            field_name="namespace",
+            field_schema=models.KeywordIndexParams(
+                type=models.KeywordIndexType.KEYWORD,
+                is_tenant=True  # Co-locates vectors by namespace on disk
+            )
+        )
+        print(f"Created tenant-optimized index on 'namespace' field")
+        
     except Exception as e:
         print(f"Error creating collection {collection_name}: {e}")
         raise
+
+
 
 def create_collection_with_local_embeddings(collection_name: str, dimension: int = 768):
     """
