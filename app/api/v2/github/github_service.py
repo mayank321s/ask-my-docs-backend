@@ -63,13 +63,12 @@ class GitHubService:
 
             # NOW async DB operations work fine - same event loop!
             await GithubRepoRepository.updateByClause({"id": repo_id}, status="active")
-            await GithubBranchRepository.create({
-                "userId": user_id,
+            branchDetails = await GithubBranchRepository.findOneByClause({
                 "githubRepoId": repo_id,
-                "branchName": branch,
-                "branchRepoUrl": download_url,
-                "status": "active"
+                "branchName": branch
             })
+            if branchDetails:
+                await GithubBranchRepository.updateByClause({"id": branchDetails.id}, status="active")
 
             # Cleanup files in thread pool
             await loop.run_in_executor(
@@ -193,9 +192,23 @@ class GitHubService:
                         branch = repo_info.get("default_branch", "main")
                     else:
                         branch = "main"
-
             # Download URLs and paths
             download_url = f"https://api.github.com/repos/{owner}/{repo}/zipball/{branch}"
+
+              # Create branch record
+            branchDetails = await GithubBranchRepository.findOneByClause({
+                "githubRepoId": repoDetails.id,
+                "branchName": branch
+            })
+            if not branchDetails:
+                branchDetails = await GithubBranchRepository.create({
+                    "userId": currentUser.get("userId"),
+                    "githubRepoId": repoDetails.id,
+                    "branchName": branch,
+                    "status": "uploading",
+                    "branchRepoUrl": download_url
+                })
+                
             zip_filename = f"{owner}_{repo}_{branch}.zip"
             zip_path = os.path.join(GitHubService.ASSETS_DIR, zip_filename)
             extract_dir = os.path.join(GitHubService.ASSETS_DIR, f"{owner}_{repo}_{branch}")
