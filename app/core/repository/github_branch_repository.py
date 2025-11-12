@@ -52,3 +52,10 @@ class GithubBranchRepository:
     async def delete(id: int) -> GithubBranch:
         logger.info("[v1] Deleting github token by id: {}", id)
         return await GithubBranch.delete(id=id)
+
+    @staticmethod
+    async def deleteBulkByIds(branch_ids: List[int]) -> int:
+        logger.info("[v1] Bulk deleting documents by ids: {}", branch_ids)
+        if not branch_ids:
+            return 0
+        return await GithubBranch.filter(id__in=branch_ids).delete()

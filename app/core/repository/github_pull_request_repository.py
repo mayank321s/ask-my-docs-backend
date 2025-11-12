@@ -52,3 +52,10 @@ class GithubPullRequestRepository:
     async def delete(id: int) -> GithubPullRequest:
         logger.info("[v1] Deleting github token by id: {}", id)
         return await GithubPullRequest.delete(id=id)
+
+    @staticmethod
+    async def deleteBulkByIds(pr_ids: List[int]) -> int:
+        logger.info("[v1] Bulk deleting documents by ids: {}", pr_ids)
+        if not pr_ids:
+            return 0
+        return await GithubPullRequest.filter(id__in=pr_ids).delete()

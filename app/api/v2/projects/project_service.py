@@ -221,6 +221,24 @@ class ProjectService:
             categoryDocuments = await DocumentRepository.findAllByClause({
                 "namespaceId": categoryId
             })
+
+            githubRepoDetails = await GithubRepoRepository.findAllByClause({"projectId": projectId})
+            branches = []
+            pullRequests = []
+
+            if githubRepoDetails:
+                for repo in githubRepoDetails:
+                    repo_branches = await GithubBranchRepository.findAllByClause({"githubRepoId": repo.id})
+                    repo_pullRequests = await GithubPullRequestRepository.findAllByClause({"githubRepoId": repo.id})
+                    
+                    branches.extend(repo_branches)
+                    pullRequests.extend(repo_pullRequests)
+
+            githubRepoIds = [repo.id for repo in githubRepoDetails]
+            githubBranchIds = [branch.id for branch in branches]
+            githubPullRequestIds = [pullRequest.id for pullRequest in pullRequests]
+
+                            
             
             document_ids = [doc.id for doc in categoryDocuments] if categoryDocuments else []
 
@@ -237,6 +255,15 @@ class ProjectService:
                 
                 if document_ids:
                     await DocumentRepository.deleteBulkByIds(document_ids)
+                
+                if githubRepoIds:
+                    await GithubRepoRepository.deleteBulkByIds(githubRepoIds)
+                
+                if githubBranchIds:
+                    await GithubBranchRepository.deleteBulkByIds(githubBranchIds)
+                
+                if githubPullRequestIds:
+                    await GithubPullRequestRepository.deleteBulkByIds(githubPullRequestIds)
                 
                 await VectorNamespaceRepository.deleteByClause({"id": categoryDetail.id})
             deleteCategory(projectIndexDetails.indexName, categoryDetail.name)
