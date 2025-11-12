@@ -8,7 +8,7 @@ import uuid
 
 # Initialize Qdrant client
 qdrant = QdrantClient(
-    url="https://e3f5b5a7-871e-401d-8e20-edb3e28ca23d.eu-west-2-0.aws.cloud.qdrant.io:6333",
+    url=os.getenv("QDRANT_URL"),
     api_key=os.getenv("QDRANT_API_KEY"),
 )
 
