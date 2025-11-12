@@ -222,7 +222,7 @@ class ProjectService:
                 "namespaceId": categoryId
             })
 
-            githubRepoDetails = await GithubRepoRepository.findAllByClause({"projectId": projectId})
+            githubRepoDetails = await GithubRepoRepository.findAllByClause({"categoryId": categoryId})
             branches = []
             pullRequests = []
 
