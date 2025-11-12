@@ -265,48 +265,47 @@ class ProjectService:
             if repoName:
                 clause["repoName__icontains"] = repoName
 
-            repos = await GithubRepoRepository.findAllByClause(clause)
-            if not repos:
-                return {"repository": []}
-
-            repo_ids = [r.id for r in repos]
-
-            branches = await GithubBranchRepository.findAllByClause({"githubRepoId__in": repo_ids})
-            pull_requests = await GithubPullRequestRepository.findAllByClause({"githubRepoId__in": repo_ids})
-
-            branches_by_repo: Dict[int, List[Dict]] = {}
-            for b in branches or []:
-                rid = b.githubRepoId
-                branches_by_repo.setdefault(rid, []).append({
-                    "branchName": b.branchName,
-                    "branchRepoUrl": b.branchRepoUrl,
-                    "status": b.status,
-                })
-
-            prs_by_repo: Dict[int, List[Dict]] = {}
-            for p in pull_requests or []:
-                rid = p.githubRepoId
-                prs_by_repo.setdefault(rid, []).append({
-                    "prNumber": str(p.prNumber),
-                    "prUrl": p.prUrl,
-                    "prName": p.prName,
-                    "status": p.status,
-                })
-
             repository_payload: List[Dict] = []
-            for r in repos:
-                rid = r.id
-                repository_payload.append({
-                    "repoName": r.repoName,
-                    "repoOwner": r.repoOwner,
-                    "repoUrl": r.repoUrl,
-                    "projectId": r.projectId,
-                    "categoryId": r.categoryId,
-                    "status": r.status,
-                    "createdAt": r.createdAt.isoformat() if hasattr(r, 'createdAt') and r.createdAt else None,
-                    "branches": branches_by_repo.get(rid, []),
-                    "pullRequest": prs_by_repo.get(rid, [])
-                })
+            repos = await GithubRepoRepository.findAllByClause(clause)
+            if repos:
+                repo_ids = [r.id for r in repos]
+
+                branches = await GithubBranchRepository.findAllByClause({"githubRepoId__in": repo_ids})
+                pull_requests = await GithubPullRequestRepository.findAllByClause({"githubRepoId__in": repo_ids})
+
+                branches_by_repo: Dict[int, List[Dict]] = {}
+                for b in branches or []:
+                    rid = b.githubRepoId
+                    branches_by_repo.setdefault(rid, []).append({
+                        "branchName": b.branchName,
+                        "branchRepoUrl": b.branchRepoUrl,
+                        "status": b.status,
+                    })
+
+                prs_by_repo: Dict[int, List[Dict]] = {}
+                for p in pull_requests or []:
+                    rid = p.githubRepoId
+                    prs_by_repo.setdefault(rid, []).append({
+                        "prNumber": str(p.prNumber),
+                        "prUrl": p.prUrl,
+                        "prName": p.prName,
+                        "status": p.status,
+                    })
+
+            
+                for r in repos:
+                    rid = r.id
+                    repository_payload.append({
+                        "repoName": r.repoName,
+                        "repoOwner": r.repoOwner,
+                        "repoUrl": r.repoUrl,
+                        "projectId": r.projectId,
+                        "categoryId": r.categoryId,
+                        "status": r.status,
+                        "createdAt": r.createdAt.isoformat() if hasattr(r, 'createdAt') and r.createdAt else None,
+                        "branches": branches_by_repo.get(rid, []),
+                        "pullRequest": prs_by_repo.get(rid, [])
+                    })
             documentsDetails = await DocumentRepository.findAllByClause({"namespaceId": categoryId})
             result: list[ListDocumentDto] = []
             for document in documentsDetails:
