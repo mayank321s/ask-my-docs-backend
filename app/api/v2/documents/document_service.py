@@ -32,7 +32,7 @@ class DocumentService:
                 DocumentService.uploadDocumentInBackground,
                 file,
                 metadata,
-                projectIndexDetails.name,
+                projectIndexDetails.indexName,
                 vectorNamespaceDetails.name,
                 categoryId
             )
