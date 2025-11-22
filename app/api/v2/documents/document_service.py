@@ -28,10 +28,26 @@ class DocumentService:
             projectIndexDetails = await VectorIndexRepository.findOneByClause({"projectId": projectId})
             vectorNamespaceDetails = await VectorNamespaceRepository.findOneByClause({"id": categoryId})
 
+
+            metadata = json.loads(metadata)
+            fileMetadata = {
+                **metadata,
+                "file_name": file.filename,
+                "uploaded_at": datetime.now().isoformat()
+            }
+            filename_lower = file.filename.lower()
+            if filename_lower.endswith(".pdf"):
+                fileText = extractTextFromPdf(file)
+            elif filename_lower.endswith(".docx"):
+                fileText = extractTextFromDocx(file)
+            else:
+                fileText = file.file.read().decode(errors="ignore")
+
             backgroundTasks.add_task(
                 DocumentService.uploadDocumentInBackground,
-                file,
-                metadata,
+                file.filename,
+                fileText,
+                fileMetadata,
                 projectIndexDetails.indexName,
                 vectorNamespaceDetails.name,
                 categoryId
@@ -41,36 +57,23 @@ class DocumentService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
         
-    async def uploadDocumentInBackground(file: UploadFile, metadata: str, projectIndexName: str, vectorNamespaceName: str, vectorNamespaceId: int):
+    async def uploadDocumentInBackground(filename: str, fileText: str, fileMetadata: dict, projectIndexName: str, vectorNamespaceName: str, vectorNamespaceId: int):
         try:
             # Get the document to check if it exists
-            metadata = json.loads(metadata)
-            fileMetadata = {
-                **metadata,
-                "file_name": file.filename,
-                "uploaded_at": datetime.now().isoformat()
-            }
-            filename_lower = file.filename.lower()
-            if filename_lower.endswith(".pdf"):
-                text = extractTextFromPdf(file)
-            elif filename_lower.endswith(".docx"):
-                text = extractTextFromDocx(file)
-            else:
-                text = file.file.read().decode(errors="ignore")
-            chunks = chunkText(text, fileMetadata, file.filename)
+            chunks = chunkText(fileText, fileMetadata, filename)
             
             chunk_ids = [chunk["_id"] for chunk in chunks]
             
             async with in_transaction():
                 upsertChunksOllama(projectIndexName, vectorNamespaceName, chunks)
                 documentDetail = await DocumentRepository.create({
-                    "name": file.filename,
+                    "name": filename,
                     "namespaceId": vectorNamespaceId,
                 })
                 await VectorChunkRepository.create({
                     "documentId": documentDetail.id,
                     "chunkIds": chunk_ids,
-                    "metadata": metadata
+                    "metadata": fileMetadata
                 })
             return True
         except Exception as e:
