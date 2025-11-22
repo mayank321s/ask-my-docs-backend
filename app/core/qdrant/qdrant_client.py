@@ -168,13 +168,25 @@ def searchChunksOllama(collection_name, namespace, query, filters=None):
                     )
         
         # Perform the search
+        # results = qdrant.search(
+        #     collection_name=collection_name,
+        #     query_vector=query_embedding,
+        #     limit=8,
+        #     query_filter=namespace_filter,
+        # )
+        
         results = qdrant.search(
             collection_name=collection_name,
             query_vector=query_embedding,
-            limit=8,
+            limit=15,
             query_filter=namespace_filter,
+            search_params=models.SearchParams(
+                hnsw_ef=128,
+                exact=False
+            ),
         )
-        
+
+
         print(f"Found {len(results)} matches")
         return results
         
