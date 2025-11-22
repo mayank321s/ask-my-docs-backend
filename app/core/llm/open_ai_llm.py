@@ -9,6 +9,8 @@ from langchain.memory import ChatMessageHistory
 
 session_store = {}
 
+gpt_model = os.getenv("OPENAI_MODEL")
+
 def get_session_history(session_id: str) -> ChatMessageHistory:
     """Get or create chat message history for a session."""
     if session_id not in session_store:
@@ -27,10 +29,10 @@ def clear_session_history(session_id: str) -> bool:
 def askOpenAILLM(
     question: str, 
     context_chunks: List[Dict], 
-    model: str = "gpt-4o"
+    model: str = os.getenv("OPENAI_MODEL")
 ) -> str:
     """
-    Send the question plus context to OpenAI GPT-4o model.
+    Send the question plus context to OpenAI GPT model.
     
     Args:
         question: User's question
@@ -97,7 +99,7 @@ def askOpenAILLMWithMemory(
     question: str, 
     context_chunks: List[Dict], 
     session_id: str = "default",
-    model: str = "gpt-4o"
+    model: str = os.getenv("OPENAI_MODEL")
 ) -> Tuple[str, str]:
     """
     Ask OpenAI LLM with conversation memory using LangChain.
