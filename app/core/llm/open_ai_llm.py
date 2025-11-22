@@ -29,7 +29,6 @@ def clear_session_history(session_id: str) -> bool:
 def askOpenAILLM(
     question: str, 
     context_chunks: List[Dict], 
-    model: str = os.getenv("OPENAI_MODEL")
 ) -> str:
     """
     Send the question plus context to OpenAI GPT model.
@@ -43,6 +42,7 @@ def askOpenAILLM(
         str: Answer from the model
     """
     # Build context string from chunks
+    model: str = os.getenv("OPENAI_MODEL")
     context_parts = []
     for chunk in context_chunks:
         fields = chunk.get("fields", {})
@@ -77,7 +77,7 @@ def askOpenAILLM(
         llm = ChatOpenAI(
             model=model,
             temperature=0.7,
-            max_tokens=512,
+            max_tokens=30000,
             api_key=os.getenv("OPENAI_API_KEY")
         )
         
@@ -99,7 +99,6 @@ def askOpenAILLMWithMemory(
     question: str, 
     context_chunks: List[Dict], 
     session_id: str = "default",
-    model: str = os.getenv("OPENAI_MODEL")
 ) -> Tuple[str, str]:
     """
     Ask OpenAI LLM with conversation memory using LangChain.
@@ -108,12 +107,13 @@ def askOpenAILLMWithMemory(
         question: User's question
         context_chunks: List of context chunks from vector search
         session_id: Session identifier for memory management
-        model: OpenAI model name (default: gpt-4o)
-        
+        model: OpenAI model name (from OPENAI_MODEL env var)
     Returns:
         tuple: (answer, session_id)
     """
     # Build context string (same logic as askOpenAILLM)
+
+    model: str = os.getenv("OPENAI_MODEL")
     context_parts = []
     for chunk in context_chunks:
         fields = chunk.get("fields", {})
@@ -172,7 +172,7 @@ def _get_or_create_runnable_chain(model: str) -> RunnableWithMessageHistory:
         llm = ChatOpenAI(
             model=model,
             temperature=0.7,
-            max_tokens=512,
+            max_tokens=30000,
             api_key=os.getenv("OPENAI_API_KEY")
         )
         
