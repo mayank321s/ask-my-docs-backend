@@ -7,11 +7,11 @@ from app.core.repository.vector_namespace_repository import VectorNamespaceRepos
 from app.core.repository.chat_repository import ChatRepository
 from app.core.qdrant.qdrant_client import searchChunksOllama
 from app.core.llm.llm import (
-    askHuggingFaceLLM, 
-    askHuggingFaceLLMWithMemory, 
     get_conversation_history, 
     clear_conversation_memory
 )
+
+from app.core.llm.open_ai_llm import askOpenAILLM, askOpenAILLMWithMemory
 from app.core.llm.memory_utils import get_all_sessions, get_session_message_count
 from typing import Optional
 from app.utils.common import getPaginationResponse
@@ -85,7 +85,7 @@ class ChatService:
                 session_id = str(uuid.uuid4())
 
             if use_memory and session_id:
-                answer, session_id = askHuggingFaceLLMWithMemory(
+                answer, session_id = askOpenAILLMWithMemory(
                     question=request.query,
                     context_chunks=formatted_hits,
                     session_id=session_id
@@ -116,7 +116,7 @@ class ChatService:
                 }
             else:
                 # Use original function without memory
-                answer = askHuggingFaceLLM(request.query, formatted_hits)
+                answer = askOpenAILLM(request.query, formatted_hits)
                 return {
                     "answer": answer,
                     "memoryEnabled": False,

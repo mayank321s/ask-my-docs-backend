@@ -26,3 +26,5 @@ pyjwt
 bcrypt
 langchain-community
 langchain-core
+langchain-openai
+
