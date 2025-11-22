@@ -347,11 +347,44 @@ class GitHubService:
     @staticmethod
     async def fetchAndStorePrFilesInBackground(indexName: str, namespace: str, 
                                             currentUser: dict, githubRepoId: str, 
-                                            mergedPrs: list) -> bool:
+                                            owner: str, repo: str) -> bool:
         """
         Process multiple PRs in background - stays as async def
         """
         try:
+            page = 1
+            per_page = 100
+            mergedPrs = []
+            
+            async with httpx.AsyncClient() as client:
+                while True:
+                    params = {
+                        "state": "closed",
+                        "sort": "updated",
+                        "direction": "asc",
+                        "page": page,
+                        "per_page": per_page 
+                    }
+                    
+                    response = await client.get(
+                        f"https://api.github.com/repos/{owner}/{repo}/pulls",
+                        headers= await GitHubService.getHeaders(userId=currentUser.get("userId")),
+                        params=params
+                    )
+                    response.raise_for_status()
+                    
+                    prs = response.json()
+                    
+                    # Filter for merged PRs only
+                    merged_prs = [pr for pr in prs if pr.get("merged_at") is not None]
+                    mergedPrs.extend(merged_prs)
+                    
+                    # Break if we've reached the end or got less than requested
+                    if len(prs) < per_page:
+                        break
+                        
+                    page += 1
+
             for i, pr in enumerate(mergedPrs, 1):
                 pr_number = pr["number"]
                 pr_title = pr.get("title", "")
@@ -607,47 +640,11 @@ class GitHubService:
                 owner, repo = parse_repo_url(repo_url)
             except ValueError as e:
                 raise HTTPException(status_code=400, detail=f"Invalid repository URL: {str(e)}")
-
-            # Fetch all merged PRs with pagination
-            all_merged_prs = []
-            page = 1
-            per_page = 100  # GitHub's max per page
             
-            async with httpx.AsyncClient() as client:
-                while True:
-                    params = {
-                        "state": "closed",
-                        "sort": "updated",
-                        "direction": "asc",
-                        "page": page,
-                        "per_page": per_page 
-                    }
-                    
-                    response = await client.get(
-                        f"https://api.github.com/repos/{owner}/{repo}/pulls",
-                        headers= await GitHubService.getHeaders(userId=currentUser.get("userId")),
-                        params=params
-                    )
-                    response.raise_for_status()
-                    
-                    prs = response.json()
-                    
-                    # Filter for merged PRs only
-                    merged_prs = [pr for pr in prs if pr.get("merged_at") is not None]
-                    all_merged_prs.extend(merged_prs)
-                    
-                    # Break if we've reached the end or got less than requested
-                    if len(prs) < per_page:
-                        break
-                        
-                    page += 1
-
-            print(f"Found {len(all_merged_prs)} merged PRs in {owner}/{repo}")
 
             repoDetails = await GithubRepoRepository.findOneByClause({"repoName": repo, "repoOwner": owner, "userId": currentUser.get("userId"), "projectId": projectId, "categoryId": categoryId})
             if not repoDetails:
-                raise HTTPException(status_code=404, detail="Repository not found")
-            
+                raise HTTPException(status_code=404, detail="Repository not found")            
             
             backgroundTasks.add_task(
                 GitHubService.fetchAndStorePrFilesInBackground,
@@ -655,12 +652,10 @@ class GitHubService:
                 namespace=vectorNamespaceDetails.name,
                 currentUser=currentUser,
                 githubRepoId=repoDetails.id,
-                mergedPrs=all_merged_prs,
+                owner=owner,
+                repo=repo,
             )
                 
-                
-
-            
             return {"message": "Code pull requests is being uploaded, please check back after few minutes"}
 
         except httpx.HTTPStatusError as e:
