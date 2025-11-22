@@ -17,15 +17,33 @@ from fastapi import UploadFile
 import json
 from app.core.models.pydantic.document import ListDocumentDto
 from datetime import datetime
+from fastapi import BackgroundTasks
 class DocumentService:
     @staticmethod
-    async def handleUploadDocument(file: UploadFile, projectId: int, categoryId: int, metadata: str):
+    async def handleUploadDocument(file: UploadFile, projectId: int, categoryId: int, metadata: str, backgroundTasks: BackgroundTasks):
         try:
             projectDetail = await ProjectRepository.get_by_id(projectId)
             if not projectDetail:
                 raise HTTPException(status_code=404, detail="Project not found")
             projectIndexDetails = await VectorIndexRepository.findOneByClause({"projectId": projectId})
             vectorNamespaceDetails = await VectorNamespaceRepository.findOneByClause({"id": categoryId})
+
+            backgroundTasks.add_task(
+                DocumentService.uploadDocumentInBackground,
+                file,
+                metadata,
+                projectIndexDetails.name,
+                vectorNamespaceDetails.name,
+                categoryId
+            )
+
+            return {"message": "Document is being processed. Please check back in a few minutes."}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+        
+    async def uploadDocumentInBackground(file: UploadFile, metadata: str, projectIndexName: str, vectorNamespaceName: str, vectorNamespaceId: int):
+        try:
+            # Get the document to check if it exists
             metadata = json.loads(metadata)
             fileMetadata = {
                 **metadata,
@@ -44,20 +62,20 @@ class DocumentService:
             chunk_ids = [chunk["_id"] for chunk in chunks]
             
             async with in_transaction():
-                upsertChunksOllama(projectIndexDetails.indexName, vectorNamespaceDetails.name, chunks)
+                upsertChunksOllama(projectIndexName, vectorNamespaceName, chunks)
                 documentDetail = await DocumentRepository.create({
                     "name": file.filename,
-                    "namespaceId": vectorNamespaceDetails.id,
+                    "namespaceId": vectorNamespaceId,
                 })
                 await VectorChunkRepository.create({
                     "documentId": documentDetail.id,
                     "chunkIds": chunk_ids,
                     "metadata": metadata
                 })
-
             return True
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
+        
 
 
     
