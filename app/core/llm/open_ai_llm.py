@@ -1,6 +1,6 @@
 import os
 import json
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, AsyncGenerator
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.output_parsers import StrOutputParser
@@ -224,3 +224,190 @@ def get_conversation_history(session_id: str) -> List[Dict]:
         })
     
     return formatted_history
+
+async def askOpenAILLMWithMemoryStream(
+    question: str, 
+    context_chunks: List[Dict], 
+    session_id: str = "default",
+) -> AsyncGenerator[str, None]:
+    """
+    Stream responses from OpenAI LLM with conversation memory using LangChain.
+    
+    Args:
+        question: User's question
+        context_chunks: List of context chunks from vector search
+        session_id: Session identifier for memory management
+        
+    Yields:
+        str: Token chunks from the LLM response
+    """
+    model: str = os.getenv("OPENAI_MODEL")
+    
+    # Build context string
+    context_parts = []
+    for chunk in context_chunks:
+        fields = chunk.get("fields", {})
+        chunk_text = fields.get("chunk_text", "")
+        metadata = {k: v for k, v in fields.items() if k != "chunk_text"}
+        
+        if metadata:
+            meta_json = json.dumps(metadata, indent=2, default=str)
+            metadata_str = f"\n[Metadata]\n{meta_json}\n"
+        else:
+            metadata_str = ""
+        
+        context_part = f"{chunk_text}{metadata_str}"
+        context_parts.append(context_part)
+    
+    context = "\n\n".join(context_parts)
+    
+    # Get or create the conversational chain
+    conversational_chain = _get_or_create_runnable_chain(model)
+    
+    # Enhanced input with context
+    enhanced_input = f"""Context:
+{context}
+
+Question: {question}"""
+    
+    # Stream with session-based memory
+    try:
+        async for chunk in conversational_chain.astream(
+            {"input": enhanced_input},
+            config={"configurable": {"session_id": session_id}}
+        ):
+            if chunk:
+                yield chunk
+    except Exception as e:
+        yield f"Error: {str(e)}"
+
+
+async def askOpenAILLMStream(
+    question: str, 
+    context_chunks: List[Dict]
+) -> AsyncGenerator[str, None]:
+    """
+    Stream responses from OpenAI LLM without memory.
+    
+    Args:
+        question: User's question
+        context_chunks: List of context chunks from vector search
+        
+    Yields:
+        str: Token chunks from the LLM response
+    """
+    model: str = os.getenv("OPENAI_MODEL")
+    
+    # Build context string (same as with memory)
+    context_parts = []
+    for chunk in context_chunks:
+        fields = chunk.get("fields", {})
+        chunk_text = fields.get("chunk_text", "")
+        metadata = {k: v for k, v in fields.items() if k != "chunk_text"}
+        
+        if metadata:
+            meta_json = json.dumps(metadata, indent=2, default=str)
+            metadata_str = f"\n[Metadata]\n{meta_json}\n"
+        else:
+            metadata_str = ""
+        
+        context_part = f"{chunk_text}{metadata_str}"
+        context_parts.append(context_part)
+    
+    context = "\n\n".join(context_parts)
+    
+    # Create simple LLM without memory
+    llm = ChatOpenAI(
+        model=model,
+        temperature=0.7,
+        max_tokens=30000,
+        streaming=True,
+        api_key=os.getenv("OPENAI_API_KEY")
+    )
+    
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", """You are a helpful and knowledgeable assistant. 
+You have access to internal documents and data to help you answer questions. 
+Based on the context provided, answer the user's question clearly and conversationally."""),
+        ("human", "Context:\n{context}\n\nQuestion: {question}")
+    ])
+    
+    chain = prompt | llm | StrOutputParser()
+    
+    try:
+        async for chunk in chain.astream({
+            "context": context,
+            "question": question
+        }):
+            if chunk:
+                yield chunk
+    except Exception as e:
+        yield f"Error: {str(e)}"
+
+async def askOpenAILLMWithMemoryStreamEvents(
+    question: str, 
+    context_chunks: List[Dict], 
+    session_id: str = "default",
+) -> AsyncGenerator[Dict, None]:
+    """
+    Stream events from OpenAI LLM with memory - provides more granular control.
+    
+    Yields:
+        dict: Event data including tokens, metadata, and status updates
+    """
+    model: str = os.getenv("OPENAI_MODEL")
+    
+    # Build context (same as before)
+    context_parts = []
+    for chunk in context_chunks:
+        fields = chunk.get("fields", {})
+        chunk_text = fields.get("chunk_text", "")
+        metadata = {k: v for k, v in fields.items() if k != "chunk_text"}
+        
+        if metadata:
+            meta_json = json.dumps(metadata, indent=2, default=str)
+            metadata_str = f"\n[Metadata]\n{meta_json}\n"
+        else:
+            metadata_str = ""
+        
+        context_part = f"{chunk_text}{metadata_str}"
+        context_parts.append(context_part)
+    
+    context = "\n\n".join(context_parts)
+    
+    conversational_chain = _get_or_create_runnable_chain(model)
+    
+    enhanced_input = f"""Context:
+{context}
+
+Question: {question}"""
+    
+    try:
+        async for event in conversational_chain.astream_events(
+            {"input": enhanced_input},
+            config={"configurable": {"session_id": session_id}},
+            version="v2"
+        ):
+            # Filter for chat model streaming events
+            if event["event"] == "on_chat_model_stream":
+                content = event["data"]["chunk"].content
+                if content:
+                    yield {
+                        "type": "token",
+                        "content": content
+                    }
+            elif event["event"] == "on_chat_model_start":
+                yield {
+                    "type": "model_start",
+                    "message": "Model started generating"
+                }
+            elif event["event"] == "on_chat_model_end":
+                yield {
+                    "type": "model_end",
+                    "message": "Model finished generating"
+                }
+    except Exception as e:
+        yield {
+            "type": "error",
+            "message": str(e)
+        }

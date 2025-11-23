@@ -4,6 +4,7 @@ from .chat_service import ChatService
 from app.core.models.pydantic.chat import SearchAndAnswerRequestDto, ChatHistoryResponseDto, SessionClearResponseDto, UserChatHistoryDto, UserChatHistoryResponseDto
 from typing import Optional, Dict, List
 from app.utils.jwt import get_current_user
+from fastapi.responses import StreamingResponse
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -104,3 +105,21 @@ async def get_all_histories(
 async def get_all_histories(session_id: str = Path(..., description="Session ID to retrieve history for"), currentUser: Dict = Depends(get_current_user)):
     "Get all conversation histories"
     return await ChatService.getUserChatBySessionId(currentUser, session_id)
+
+@router.post(
+    "/stream",
+    description="Stream search and answer with optional conversation memory",
+    response_class=StreamingResponse
+)
+async def search_and_answer_stream(
+    request: SearchAndAnswerRequestDto,
+    use_memory: bool = Query(True, description="Enable conversation memory"),
+    currentUser: Dict = Depends(get_current_user)
+):
+    """
+    Stream search results and generated answers in real-time.
+
+    - **use_memory**: Enable/disable conversation memory
+    - **sessionId**: Optional session ID for memory (auto-generated if not provided)
+    """
+    return await ChatService.handleSearchAndAnswerStream(request, use_memory, currentUser)

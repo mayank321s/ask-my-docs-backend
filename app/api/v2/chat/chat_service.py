@@ -1,5 +1,5 @@
 # app/api/v1/chat_service.py
-from fastapi import HTTPException, status
+from fastapi import HTTPException, status, BackgroundTasks
 from pypika_tortoise.enums import Order
 from app.core.models.pydantic.chat import SearchAndAnswerRequestDto, ChatHistoryResponseDto, SessionClearResponseDto, UserChatHistoryDto
 from app.core.repository.vector_index_repository import VectorIndexRepository
@@ -11,11 +11,15 @@ from app.core.llm.llm import (
     clear_conversation_memory
 )
 
-from app.core.llm.open_ai_llm import askOpenAILLM, askOpenAILLMWithMemory
+from app.core.llm.open_ai_llm import askOpenAILLM, askOpenAILLMWithMemory, askOpenAILLMWithMemoryStream, askOpenAILLMStream
 from app.core.llm.memory_utils import get_all_sessions, get_session_message_count
-from typing import Optional
+from typing import Optional, AsyncGenerator
 from app.utils.common import getPaginationResponse
 import uuid
+import json
+from fastapi import HTTPException, BackgroundTasks, status
+from fastapi.responses import StreamingResponse
+
 
 class ChatService:
     @staticmethod
@@ -250,4 +254,138 @@ class ChatService:
                 detail=f"Internal server error: {str(e)}"
             )
 
+    @staticmethod
+    async def handleSearchAndAnswerStream(
+        request: SearchAndAnswerRequestDto, 
+        use_memory: bool = True,
+        currentUser: Optional[dict] = None
+    ) -> StreamingResponse:
+        """Handle search and answer with streaming response."""
+        try:
+            chatDetails = await ChatRepository.findOneByClause({
+                "userId": currentUser.get("userId"),
+                "sessionId": request.sessionId
+            })
 
+            if chatDetails and chatDetails.chatHistory:
+                chatHistory = chatDetails.chatHistory.copy()
+            else:
+                chatHistory = []
+            
+            # Get project index details
+            projectId = chatDetails.projectId if request.sessionId else request.projectId
+            categoryId = chatDetails.categoryId if request.sessionId else request.categoryId
+            projectIndexDetails = await VectorIndexRepository.findOneByClause(
+                {"projectId": projectId}
+            )
+            if not projectIndexDetails:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND, 
+                    detail="Project index not found"
+                )
+
+            all_hits = []
+
+            # Search logic
+            if categoryId:
+                namespaceDetails = await VectorNamespaceRepository.findOneByClause(
+                    {"id": categoryId}
+                )
+                if not namespaceDetails:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND, 
+                        detail="Namespace not found"
+                    )
+
+                results = searchChunksOllama(
+                    collection_name=projectIndexDetails.indexName,
+                    namespace=namespaceDetails.name,
+                    query=request.query
+                )
+                all_hits.extend(results)
+            else:
+                namespaces = await VectorNamespaceRepository.findAllByClause(
+                    {"indexId": projectIndexDetails.id}
+                )
+                for ns in namespaces:
+                    results = searchChunksOllama(
+                        collection_name=projectIndexDetails.indexName,
+                        namespace=ns.name,
+                        query=request.query
+                    )
+                    all_hits.extend(results)
+
+            formatted_hits = [{"fields": hit.payload} for hit in all_hits]
+            session_id = request.sessionId
+            if use_memory and not session_id:
+                session_id = str(uuid.uuid4())
+
+            # Create streaming generator
+            async def stream_generator():
+                full_response = ""
+                
+                # Send initial metadata
+                yield f" {json.dumps({'type': 'start', 'sessionId': session_id, 'contextChunksCount': len(formatted_hits)})}\n\n"
+                
+                try:
+                    if use_memory and session_id:
+                        async for chunk in askOpenAILLMWithMemoryStream(
+                            question=request.query,
+                            context_chunks=formatted_hits,
+                            session_id=session_id
+                        ):
+                            full_response += chunk
+                            yield f" {json.dumps({'type': 'stream', 'answer': chunk})}\n\n"
+                    else:
+                        async for chunk in askOpenAILLMStream(
+                            question=request.query,
+                            context_chunks=formatted_hits
+                        ):
+                            full_response += chunk
+                            yield f" {json.dumps({'type': 'stream', 'answer': chunk})}\n\n"
+                    
+                    # Save to database after streaming completes
+                    if use_memory and session_id:
+                        chatHistory.extend([
+                            {"user": request.query},
+                            {"assistant": full_response}
+                        ])
+
+                        if chatDetails:
+                            await ChatRepository.updateByClause(
+                                {"id": chatDetails.id},
+                                chatHistory=chatHistory
+                            )
+                        else:
+                            await ChatRepository.create({
+                                "projectId": projectId,
+                                "categoryId": categoryId,
+                                "userId": currentUser.get("userId"),
+                                "sessionId": session_id,
+                                "chatHistory": chatHistory
+                            })
+                    
+                    # Send completion event
+                    yield f" {json.dumps({'type': 'end', 'sessionId': session_id, 'memoryEnabled': use_memory})}\n\n"
+                    
+                except Exception as e:
+                    yield f" {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+            
+            return StreamingResponse(
+                stream_generator(),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                    "X-Accel-Buffering": "no"  # Disable buffering for nginx
+                }
+            )
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
+                detail=f"Internal server error: {str(e)}"
+            )
