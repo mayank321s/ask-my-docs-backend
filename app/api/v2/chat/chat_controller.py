@@ -122,4 +122,4 @@ async def search_and_answer_stream(
     - **use_memory**: Enable/disable conversation memory
     - **sessionId**: Optional session ID for memory (auto-generated if not provided)
     """
-    return await ChatService.handleSearchAndAnswerStream(request, use_memory, currentUser)
+    return await ChatService.handleSearchAndAnswerStream(request, currentUser)

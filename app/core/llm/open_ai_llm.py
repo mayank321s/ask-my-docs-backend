@@ -411,3 +411,146 @@ Question: {question}"""
             "type": "error",
             "message": str(e)
         }
+
+
+import os
+import json
+from typing import List, Dict, AsyncGenerator
+from openai import AsyncOpenAI
+
+
+def get_openai_client() -> AsyncOpenAI:
+    """Get OpenAI client with custom base URL for AI Gateway."""
+    api_key = os.getenv('AI_GATEWAY_API_KEY')
+    base_url = os.getenv('OPENAI_BASE_URL', 'https://ai-gateway.vercel.sh/v1')
+    
+    return AsyncOpenAI(
+        api_key=api_key,
+        base_url=base_url
+    )
+
+
+def format_chat_history(chat_history: List[Dict], limit: int = 5) -> List[Dict]:
+    """
+    Convert DB chat history to OpenAI messages format.
+    Takes last N messages from history.
+    """
+    messages = []
+    recent_history = chat_history[-limit:] if len(chat_history) > limit else chat_history
+    
+    for entry in recent_history:
+        if "user" in entry:
+            messages.append({"role": "user", "content": entry["user"]})
+        if "assistant" in entry:
+            messages.append({"role": "assistant", "content": entry["assistant"]})
+    
+    return messages
+
+
+#     if chat_history:
+#         formatted_history = format_chat_history(chat_history, limit=5)
+    
+#     # Add current question with context
+#     messages.append({
+#         "role": "user",
+#         "content": f"""Previous Conversation History:
+# {json.dumps(formatted_history, indent=2, default=str) if formatted_history else " "}
+# Context:
+# {context}
+
+
+async def askOpenAILLMStreamUsingVercel(
+    question: str, 
+    context_chunks: List[Dict],
+    chat_history: List[Dict] = None
+) -> AsyncGenerator[str, None]:
+    """
+    Stream responses from OpenAI via Vercel AI Gateway in native SSE format.
+    Returns complete JSON chunks in SSE format compatible with AI SDK.
+    
+    Args:
+        question: User's current question
+        context_chunks: List of context chunks from vector search
+        chat_history: Optional chat history from DB
+        
+    Yields:
+        str: SSE formatted strings with complete JSON chunks
+    """
+    model = os.getenv("OPENAI_MODEL", "gpt-4")
+    client = get_openai_client()
+    
+    # Build context string
+    context_parts = []
+    for chunk in context_chunks:
+        fields = chunk.get("fields", {})
+        chunk_text = fields.get("chunk_text", "")
+        metadata = {k: v for k, v in fields.items() if k != "chunk_text"}
+        
+        if metadata:
+            meta_json = json.dumps(metadata, indent=2, default=str)
+            metadata_str = f"\n[Metadata]\n{meta_json}\n"
+        else:
+            metadata_str = ""
+        
+        context_part = f"{chunk_text}{metadata_str}"
+        context_parts.append(context_part)
+    
+    context = "\n\n".join(context_parts)
+    
+    # Build messages array
+    messages = [
+        {
+            "role": "system",
+            "content": """You are a helpful and knowledgeable assistant.
+You have access to internal documents and data to help you answer questions.
+Based on the context provided, answer the user's question clearly and conversationally."""
+        }
+    ]
+    
+    # Add chat history if provided
+    formatted_history = ""
+    if chat_history:
+        formatted_history = format_chat_history(chat_history, limit=5)
+    
+    # Add current question with context
+    messages.append({
+        "role": "user",
+        "content": f"""Previous Conversation History:
+{json.dumps(formatted_history, indent=2, default=str) if formatted_history else " "}
+Context:
+{context}
+
+Question: {question}"""
+    })
+    
+    # Stream from OpenAI
+    try:
+        stream = await client.chat.completions.create(
+            model=model,
+            messages=messages,
+            stream=True,
+            temperature=0.7,
+            max_tokens=30000
+        )
+        
+        async for chunk in stream:
+            # Convert chunk to dictionary
+            chunk_dict = chunk.model_dump()
+            
+            # Format as SSE:  {json}\n\n
+            sse_message = f" {json.dumps(chunk_dict)}\n\n"
+            yield sse_message
+        
+        # Send the [DONE] message at the end
+        yield " [DONE]\n\n"
+                
+    except Exception as e:
+        # Send error in SSE format
+        error_dict = {
+            "error": {
+                "message": str(e),
+                "type": "api_error"
+            }
+        }
+        yield f" {json.dumps(error_dict)}\n\n"
+        yield " [DONE]\n\n"
