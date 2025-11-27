@@ -1,5 +1,4 @@
 from tortoise import Model, fields
-from .vector_indexes import VectorIndex
 
 class VectorNamespace(Model):
     """Logical partition inside a vector index."""
@@ -7,7 +6,7 @@ class VectorNamespace(Model):
     id = fields.IntField(pk=True)
     name = fields.CharField(max_length=255)
     categoryName = fields.CharField(max_length=255, source_field="category_name")
-    indexId : fields.ForeignKeyRelation[VectorIndex] = fields.ForeignKeyField("models.VectorIndex", related_name="namespaces", on_delete=fields.CASCADE)
+    indexId : int = fields.IntField(source_field="index_id")
     createdAt = fields.DatetimeField(auto_now_add=True, source_field="created_at")
     updatedAt = fields.DatetimeField(auto_now=True, source_field="updated_at")
 

@@ -1,0 +1,87 @@
+from fastapi import HTTPException
+from fastapi import status
+from app.core.models.pydantic.auth import LoginRequestDto, RegisterRequestDto
+from app.core.repository.users_repository import UserRepository
+from app.utils.jwt import JWTHandler
+from app.utils.password_hasher import PasswordHasher
+from app.core.repository.github_token_repository import GithubTokenRepository
+
+class AuthService:
+    @staticmethod
+    async def handleLogin(request: LoginRequestDto):
+        try:
+            user = await UserRepository.findOneByClause({"emailAddress": request.emailAddress.lower()})
+            if not user:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND, 
+                    detail="User not found"
+                )
+            
+            if not PasswordHasher.verifyPassword(request.password, user.password):
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED, 
+                    detail="Incorrect password"
+                )
+            
+            accessToken = JWTHandler.createAccessToken(
+                userId=user.id, 
+                emailAddress=user.emailAddress,
+                roleCode=user.roleCode
+            )
+            
+            githubToken = await GithubTokenRepository.findOneByClause({"userId": user.id})
+            
+            return {
+                "message": "Login successful",
+                "firstName": user.firstName,
+                "lastName": user.lastName,
+                "emailAddress": user.emailAddress,
+                "roleCode": user.roleCode,
+                "accessToken": accessToken,
+                "githubToken": True if githubToken else False
+            }
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
+                detail=f"Internal server error: {str(e)}"
+            )
+        
+    @staticmethod
+    async def handleRegister(request: RegisterRequestDto):
+        try:
+            existing_user = await UserRepository.findOneByClause({"emailAddress": request.emailAddress.lower()})
+            if existing_user:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT, 
+                    detail="User already exists"
+                )
+            
+            hashed_password = PasswordHasher.hashPassword(request.password)
+            
+            userDataToCreate = {
+                "firstName": request.firstName,
+                "lastName": request.lastName,
+                "emailAddress": request.emailAddress.lower(),
+                "password": hashed_password,
+                "roleCode": "user"
+            }
+            
+            newUser = await UserRepository.create(userDataToCreate)
+            
+            accessToken = JWTHandler.createAccessToken(
+                userId=newUser.id, 
+                emailAddress=newUser.emailAddress,
+                roleCode=newUser.roleCode
+            )
+            
+            return {
+                "message": "Registration successful",
+            }
+        except Exception as e:
+            raise HTTPException(
+                status_code=e.status_code if e.status_code else 500,
+                detail=f"{str(e)}"
+            )

@@ -1,4 +1,4 @@
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Tuple
 from loguru import logger
 
 from app.core.models.tortoise import Project
@@ -7,9 +7,9 @@ from app.core.models.tortoise import Project
 class ProjectRepository:
 
     @staticmethod
-    async def create(name: str) -> Project:
-        logger.info("[v1] Creating project: {}", name)
-        return await Project.create(name=name)
+    async def create(createProjectDto: Dict[str, Any]) -> Project:
+            logger.info("[v1] Creating Project: {}", createProjectDto)
+            return await Project.create(**createProjectDto)
 
     @staticmethod
     async def list_all() -> List[Project]:
@@ -27,9 +27,27 @@ class ProjectRepository:
         return await Project.get_or_none(**whereClause)
     
     @staticmethod
-    async def findAllByClause(whereClause: Dict[str, Any]) -> List[Project]:
+    async def findAllByClause(
+        whereClause: Dict[str, Any],
+        offset: int = 0,
+        limit: int = 10
+    ) -> Tuple[List[Project], int]:
+        """
+        Fetch projects by clause with pagination support.
+        Returns tuple of (projects_list, total_count)
+        """
         logger.info("[v1] Fetching projects by clause: {}", whereClause)
-        return await Project.filter(**whereClause).order_by("id")
+        
+        # Get total count before applying pagination
+        totalCount = await Project.filter(**whereClause).count()
+        
+        # Fetch paginated results ordered by createdAt descending (latest first)
+        projects = await Project.filter(**whereClause)\
+            .order_by("-createdAt")\
+            .offset(offset)\
+            .limit(limit)
+        
+        return projects, totalCount
 
     @staticmethod
     async def update(id: int, name: str) -> Project:
@@ -37,6 +55,7 @@ class ProjectRepository:
         return await Project.update(id=id, name=name)
 
     @staticmethod
-    async def delete(id: int) -> Project:
-        logger.info("[v1] Deleting project by id: {}", id)
-        return await Project.delete(id=id)
+    async def deleteByClause(whereClause: Dict[str, Any]) -> int:
+        logger.info("[v1] Deleting project by clause: {}", whereClause)
+        # Use filter().delete() instead of Model.delete(**kwargs)
+        return await Project.filter(**whereClause).delete()
