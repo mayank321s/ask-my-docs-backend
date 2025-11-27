@@ -477,9 +477,38 @@ class ChatService:
                         context_chunks=formatted_hits,
                         chat_history=chatHistory if request.sessionId else None
                     ):
-                        # Parse the SSE chunk to extract content for DB storage
-                        chunk_data = json.loads(sse_chunk)
+                        # Strip whitespace to handle variations
+                        raw = sse_chunk.strip()
+                        
+                        # Skip empty chunks
+                        if not raw:
+                            continue
+                        
+                        # Handle end-of-stream sentinel
+                        if raw == "[DONE]":
+                            # Forward to client in SSE format
+                            yield " [DONE]\n\n"
+                            break
+                        
+                        # Handle SSE-style chunks (remove " " prefix if present)
+                        if raw.startswith(""):
+                            raw = raw[len(""):].strip()
+                        
+                        # Skip if it's the DONE marker after stripping prefix
+                        if raw == "[DONE]":
+                            yield " [DONE]\n\n"
+                            break
+                        
+                        # Attempt to parse JSON only for actual content chunks
+                        try:
+                            chunk_data = json.loads(raw)
+                        except json.JSONDecodeError as parse_err:
+                            # Log the problematic chunk for debugging
+                            print(f"Skipping non-JSON chunk (length={len(raw)}): {repr(raw[:100])}")
+                            # Don't treat this as fatal - just continue to next chunk
+                            continue
 
+                        # Extract content from valid JSON chunk
                         aiAnswersComingInStreamData = (
                             chunk_data
                             .get("choices", [{}])[0]
@@ -490,8 +519,8 @@ class ChatService:
                         if aiAnswersComingInStreamData:
                             full_response += aiAnswersComingInStreamData
 
-                        # Forward chunk to client as-is
-                        yield sse_chunk
+                        # Forward chunk to client as SSE
+                        yield f" {json.dumps(chunk_data)}\n\n"
 
                 except asyncio.CancelledError:
                     # Client disconnected mid-stream; let finally run and attempt save.
@@ -506,8 +535,7 @@ class ChatService:
                             "type": "stream_error"
                         }
                     }
-                    # Note: keep output as valid SSE event framing on your frontend side
-                    yield f"{json.dumps(error_dict)}\n\n"
+                    yield f" {json.dumps(error_dict)}\n\n"
                     yield " [DONE]\n\n"
 
                 finally:
@@ -560,3 +588,4 @@ class ChatService:
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Internal server error: {str(e)}"
             )
+
