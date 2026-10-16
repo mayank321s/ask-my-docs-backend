@@ -37,6 +37,6 @@ class VectorIndexRepository:
         return await VectorIndex.update(**whereClause, name=name)
 
     @staticmethod
-    async def deleteByClause(whereClause: Dict[str, Any]) -> VectorIndex:
+    async def deleteByClause(whereClause: Dict[str, Any]) -> int:
         logger.info("[v1] Deleting vector index by clause: {}", whereClause)
-        return await VectorIndex.delete(**whereClause)
+        return await VectorIndex.filter(**whereClause).delete()

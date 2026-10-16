@@ -1,10 +1,11 @@
 """API v1 controller for Projects."""
-from typing import List
+from typing import List, Dict
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, status, Depends
 
 from app.core.models.pydantic.projects import CreateProjectRequestDto, ListProjectDto
-from app.core.models.pydantic.category import CreateCategoryRequestDto
+from app.core.models.pydantic.category import CreateCategoryRequestDto, ListCategoryDto
+from app.utils.jwt import get_current_user
 from .project_service import ProjectService
 
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -15,9 +16,10 @@ router = APIRouter(prefix="/projects", tags=["projects"])
     status_code=status.HTTP_201_CREATED,
     description="Create a new project",
 )
-async def createProject(request: CreateProjectRequestDto):
-    project = await ProjectService.create(request)
+async def createProject(request: CreateProjectRequestDto, currentUser: Dict = Depends(get_current_user)):
+    project = await ProjectService.create(request, currentUser)
     return project
+
 
 
 @router.get(
@@ -25,9 +27,9 @@ async def createProject(request: CreateProjectRequestDto):
     response_model=List[ListProjectDto],
     description="Get all projects",
 )
-async def listProjects():
-    projects = await ProjectService.list_all()
-    return [ListProjectDto.model_validate(p) for p in projects]
+async def listProjects(currentUser: Dict = Depends(get_current_user)):
+    return await ProjectService.handleListAllProjects(currentUser)
+
 
 
 @router.post(
@@ -35,6 +37,14 @@ async def listProjects():
     status_code=status.HTTP_201_CREATED,
     description="Create a new category",
 )
-async def createProjectCategory(projectId: int, request: CreateCategoryRequestDto):
-    category = await ProjectService.handleCreateProjectCategory(projectId, request)
+async def createProjectCategory(projectId: int, request: CreateCategoryRequestDto, currentUser: Dict = Depends(get_current_user)):
+    category = await ProjectService.handleCreateProjectCategory(projectId, request, currentUser)
     return category
+
+@router.get(
+    "/{projectId}/category",
+    response_model=List[ListCategoryDto],
+    description="Get all project categories",
+)
+async def listProjectCategories(projectId: int, currentUser: Dict = Depends(get_current_user)):
+    return await ProjectService.handleListProjectCategoriesByProjectId(projectId, currentUser)
